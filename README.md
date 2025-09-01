@@ -1,6 +1,7 @@
 Cuisync
 
 EN: Cuisync — Bridging front-of-house and kitchen.
+
 FR: Cuisync — Relie la salle à la cuisine.
 
 📝 Description
