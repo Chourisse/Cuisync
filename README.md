@@ -1,20 +1,19 @@
 Cuisync
 
-Tagline (EN): Cuisync — Bridging front-of-house and kitchen.
-Slogan (FR): Cuisync — Relie la salle à la cuisine.
+EN: Cuisync — Bridging front-of-house and kitchen.
+FR: Cuisync — Relie la salle à la cuisine.
 
 📝 Description
+
 English
 
-Elevator Pitch:
 Cuisync connects the dining room to the kitchen with a clean, mobile-first interface. Open-source and lightweight, it prioritizes fast, readable orders and simple workflows—create a pad, send it to the kitchen, track progress, and export logs.
 
 Français
 
-Pitch :
 Cuisync connecte la salle et la cuisine via une interface mobile-first, épurée et réactive. Open-source et légère, elle privilégie des commandes claires et un flux simple — créer un pad, l’envoyer en cuisine, suivre l’avancement et exporter l’historique.
 
-🚀 Features (planned)
+🚀 Features
 
 Mobile-first, responsive interface
 
