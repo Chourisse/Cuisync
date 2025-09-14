@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuisync - Gestion de commandes</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="branding/cuisync-icon.svg" type="image/svg+xml">
+</head>
+<body>
+    <!-- Toast notifications -->
+    <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Header with view toggle -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <img src="branding/cuisync.png" alt="Cuisync" width="32" height="32">
+                <h1>Cuisync</h1>
+            </div>
+            <div class="view-toggle">
+                <button id="server-view-btn" class="view-btn active" aria-pressed="true">
+                    Serveur
+                </button>
+                <button id="kitchen-view-btn" class="view-btn" aria-pressed="false">
+                    Cuisine
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <!-- Server View -->
+        <section id="server-view" class="view-section active">
+            <div class="container">
+                <div class="form-section">
+                    <h2>Nouvelle commande</h2>
+                    <form id="order-form" class="order-form">
+                        <div class="form-group">
+                            <label for="table-input">Table *</label>
+                            <input type="number" id="table-input" min="1" max="99" required aria-describedby="table-error">
+                            <div id="table-error" class="error-message" role="alert"></div>
+                        </div>
+                        <div class="form-group">
+                            <label for="dish-input">Plat *</label>
+                            <input type="text" id="dish-input" required aria-describedby="dish-error">
+                            <div id="dish-error" class="error-message" role="alert"></div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="qty-input">QuantitÃ©</label>
+                                <input type="number" id="qty-input" value="1" min="1" max="20">
+                            </div>
+                            <div class="form-group">
+                                <label for="course-input">Service</label>
+                                <select id="course-input">
+                                    <option value="entrÃ©e">EntrÃ©e</option>
+                                    <option value="plat" selected>Plat</option>
+                                    <option value="dessert">Dessert</option>
+                                    <option value="boisson">Boisson</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="note-input">Note (optionnelle)</label>
+                            <textarea id="note-input" rows="2" placeholder="Instructions spÃ©ciales..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Ajouter Ã  la commande</button>
+                    </form>
+                </div>
+
+                <div class="actions-section">
+                    <div class="action-buttons">
+                        <button id="send-all-btn" class="btn btn-secondary" disabled>
+                            Envoyer les commandes ouvertes
+                        </button>
+                        <button id="export-csv-btn" class="btn btn-outline">
+                            Exporter CSV
+                        </button>
+                    </div>
+                </div>
+
+                <div class="pads-section">
+                    <h2>Commandes en cours</h2>
+                    <div id="server-pads-container" class="pads-container">
+                        <div class="empty-state">
+                            <p>Aucune commande en cours</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Kitchen View -->
+        <section id="kitchen-view" class="view-section">
+            <div class="container">
+                <div class="kitchen-header">
+                    <h2>Vue cuisine</h2>
+                    <div class="kitchen-controls">
+                        <button id="compact-mode-btn" class="btn btn-outline" aria-pressed="false">
+                            Mode compact
+                        </button>
+                    </div>
+                </div>
+                <div id="kitchen-pads-container" class="pads-container kitchen-pads">
+                    <div class="empty-state">
+                        <p>Aucune commande envoyÃ©e</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Undo notification -->
+    <div id="undo-notification" class="undo-notification hidden">
+        <span id="undo-message">Action annulÃ©e</span>
+        <button id="undo-btn" class="undo-btn">Annuler (U)</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
