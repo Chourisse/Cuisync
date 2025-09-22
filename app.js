@@ -6,6 +6,7 @@
 class CuisyncApp {
     constructor() {
         this.pads = [];
+        this.menu = { categories: [] };
         this.currentView = 'server';
         this.undoStack = [];
         this.isCompactMode = false;
@@ -30,9 +31,22 @@ class CuisyncApp {
             orderForm: document.getElementById('order-form'),
             tableInput: document.getElementById('table-input'),
             dishInput: document.getElementById('dish-input'),
+            categorySelect: document.getElementById('category-select'),
+            dishSelect: document.getElementById('dish-select'),
             qtyInput: document.getElementById('qty-input'),
             courseInput: document.getElementById('course-input'),
             noteInput: document.getElementById('note-input'),
+            priceInput: document.getElementById('price-input'),
+            totalInput: document.getElementById('total-input'),
+            
+            // Menu management
+            categoryForm: document.getElementById('category-form'),
+            categoryNameInput: document.getElementById('category-name-input'),
+            dishForm: document.getElementById('dish-form'),
+            dishCategorySelect: document.getElementById('dish-category-select'),
+            dishNameInput: document.getElementById('dish-name-input'),
+            dishPriceInput: document.getElementById('dish-price-input'),
+            menuList: document.getElementById('menu-list'),
             
             // Actions
             sendAllBtn: document.getElementById('send-all-btn'),
@@ -51,7 +65,11 @@ class CuisyncApp {
     
     init() {
         this.loadFromStorage();
+        this.loadMenuFromStorage();
         this.setupEventListeners();
+        this.refreshCategoryOptions();
+        this.refreshDishOptions();
+        this.renderMenuList();
         this.renderViews();
         this.updateSendAllButton();
         
@@ -70,10 +88,95 @@ class CuisyncApp {
             this.handleFormSubmit();
         });
         
+        // Menu management events
+        if (this.dom.categoryForm) {
+            this.dom.categoryForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = this.dom.categoryNameInput.value.trim();
+                if (!name) return;
+                this.addCategory(name);
+                this.dom.categoryNameInput.value = '';
+            });
+        }
+        if (this.dom.dishForm) {
+            this.dom.dishForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const categoryId = this.dom.dishCategorySelect.value;
+                const name = this.dom.dishNameInput.value.trim();
+                const price = parseFloat(this.dom.dishPriceInput.value);
+                if (!categoryId || !name || isNaN(price)) return;
+                this.addDish(categoryId, name, price);
+                this.dom.dishNameInput.value = '';
+                this.dom.dishPriceInput.value = '';
+            });
+        }
+        if (this.dom.categorySelect) {
+            this.dom.categorySelect.addEventListener('change', () => {
+                if (this.dom.categorySelect.value === '__add_category__') {
+                    const name = prompt('Nom de la nouvelle catégorie');
+                    // Reset selection if cancelled or empty
+                    if (!name || !name.trim()) {
+                        this.dom.categorySelect.value = '';
+                    } else {
+                        const beforeCount = this.menu.categories.length;
+                        this.addCategory(name.trim());
+                        // Select the newly added category
+                        const added = this.menu.categories[this.menu.categories.length - 1];
+                        if (added && this.menu.categories.length > beforeCount) {
+                            this.dom.categorySelect.value = added.id;
+                        }
+                    }
+                }
+                this.refreshDishOptions();
+                // Clear dish selection and price when category changes
+                if (this.dom.priceInput) this.dom.priceInput.value = '';
+            });
+        }
+        if (this.dom.dishSelect) {
+            this.dom.dishSelect.addEventListener('change', () => {
+                const selectedDish = this.getSelectedDish();
+                if (selectedDish && this.dom.priceInput) {
+                    this.dom.priceInput.value = selectedDish.price.toFixed(2);
+                    // Also mirror name in free text input for visibility
+                    this.dom.dishInput.value = selectedDish.name;
+                }
+                this.recalculateTotal();
+            });
+        }
+        if (this.dom.dishCategorySelect) {
+            // Keep category dropdowns in sync
+            this.dom.dishCategorySelect.addEventListener('focus', () => this.refreshDishCategorySelect());
+            this.dom.dishCategorySelect.addEventListener('change', () => {
+                if (this.dom.dishCategorySelect.value === '__add_category__') {
+                    const name = prompt('Nom de la nouvelle catégorie');
+                    if (!name || !name.trim()) {
+                        this.dom.dishCategorySelect.value = '';
+                    } else {
+                        const beforeCount = this.menu.categories.length;
+                        this.addCategory(name.trim());
+                        const added = this.menu.categories[this.menu.categories.length - 1];
+                        if (added && this.menu.categories.length > beforeCount) {
+                            this.dom.dishCategorySelect.value = added.id;
+                        }
+                    }
+                }
+            });
+        }
+        
         // Actions
         this.dom.sendAllBtn.addEventListener('click', () => this.sendAllOpenPads());
         this.dom.exportBtn.addEventListener('click', () => this.exportToCSV());
         this.dom.compactModeBtn.addEventListener('click', () => this.toggleCompactMode());
+
+        // Live total recalculation
+        if (this.dom.qtyInput) {
+            this.dom.qtyInput.addEventListener('input', () => this.recalculateTotal());
+            this.dom.qtyInput.addEventListener('change', () => this.recalculateTotal());
+        }
+        if (this.dom.priceInput) {
+            this.dom.priceInput.addEventListener('input', () => this.recalculateTotal());
+            this.dom.priceInput.addEventListener('change', () => this.recalculateTotal());
+        }
         
         // Undo
         this.dom.undoBtn.addEventListener('click', () => this.performUndo());
@@ -102,6 +205,7 @@ class CuisyncApp {
                 localStorage.setItem('cuisync-settings', JSON.stringify({
                     compactMode: this.isCompactMode
                 }));
+                localStorage.setItem('cuisync-menu', JSON.stringify(this.menu));
             } catch (error) {
                 console.error('Failed to save to localStorage:', error);
                 this.showToast('Erreur de sauvegarde', 'error');
@@ -126,6 +230,27 @@ class CuisyncApp {
         } catch (error) {
             console.error('Failed to load from localStorage:', error);
             this.pads = [];
+        }
+    }
+
+    loadMenuFromStorage() {
+        try {
+            const savedMenu = localStorage.getItem('cuisync-menu');
+            if (savedMenu) {
+                this.menu = JSON.parse(savedMenu);
+            }
+        } catch (error) {
+            console.error('Failed to load menu from localStorage:', error);
+            this.menu = { categories: [] };
+        }
+    }
+
+    saveMenuToStorage() {
+        try {
+            localStorage.setItem('cuisync-menu', JSON.stringify(this.menu));
+        } catch (error) {
+            console.error('Failed to save menu to localStorage:', error);
+            this.showToast('Erreur de sauvegarde du menu', 'error');
         }
     }
     
@@ -155,12 +280,22 @@ class CuisyncApp {
         if (!this.validateForm()) return;
         
         const tableNum = parseInt(this.dom.tableInput.value);
-        const dish = this.dom.dishInput.value.trim();
+        let dish = this.dom.dishInput.value.trim();
         const qty = parseInt(this.dom.qtyInput.value);
         const course = this.dom.courseInput.value;
         const note = this.dom.noteInput.value.trim();
+        const selectedCategory = this.getSelectedCategory();
+        const selectedDish = this.getSelectedDish();
+        const price = this.dom.priceInput && this.dom.priceInput.value !== '' ? parseFloat(this.dom.priceInput.value) : (selectedDish ? selectedDish.price : null);
+        if (selectedDish) {
+            dish = selectedDish.name;
+        }
         
-        this.addItemToPad(tableNum, dish, qty, course, note);
+        this.addItemToPad(tableNum, dish, qty, course, note, {
+            categoryName: selectedCategory ? selectedCategory.name : null,
+            price: price !== null && !isNaN(price) ? price : null
+        });
+        this.recalculateTotal();
         this.clearForm();
         this.dom.tableInput.focus();
     }
@@ -178,9 +313,10 @@ class CuisyncApp {
             isValid = false;
         }
         
-        // Validate dish
+        // Validate dish: either a selection or free text
         const dish = this.dom.dishInput.value.trim();
-        if (!dish) {
+        const selectedDishId = this.dom.dishSelect ? this.dom.dishSelect.value : '';
+        if (!dish && !selectedDishId) {
             document.getElementById('dish-error').textContent = 'Le nom du plat est requis';
             isValid = false;
         }
@@ -190,15 +326,18 @@ class CuisyncApp {
     
     clearForm() {
         this.dom.dishInput.value = '';
+        if (this.dom.categorySelect) this.dom.categorySelect.value = '';
+        if (this.dom.dishSelect) this.dom.dishSelect.value = '';
         this.dom.qtyInput.value = '1';
         this.dom.courseInput.value = 'plat';
         this.dom.noteInput.value = '';
+        if (this.dom.priceInput) this.dom.priceInput.value = '';
         
         // Keep table number for convenience
         // this.dom.tableInput.value = '';
     }
     
-    addItemToPad(tableNum, dish, qty, course, note) {
+    addItemToPad(tableNum, dish, qty, course, note, extra = {}) {
         let pad = this.pads.find(p => p.table === tableNum && p.status === 'open');
         
         if (!pad) {
@@ -219,6 +358,8 @@ class CuisyncApp {
             qty,
             course,
             note: note || null,
+            price: typeof extra.price === 'number' ? extra.price : null,
+            category: extra.categoryName || null,
             createdAt: new Date().toISOString()
         };
         
@@ -231,6 +372,115 @@ class CuisyncApp {
         
         this.showToast(`${dish} ajouté à la table ${tableNum}`, 'success');
         this.playNotificationSound();
+    }
+
+    recalculateTotal() {
+        if (!this.dom.totalInput) return;
+        const qty = parseFloat(this.dom.qtyInput && this.dom.qtyInput.value ? this.dom.qtyInput.value : '0');
+        const price = parseFloat(this.dom.priceInput && this.dom.priceInput.value ? this.dom.priceInput.value : '0');
+        const total = (isNaN(qty) ? 0 : qty) * (isNaN(price) ? 0 : price);
+        this.dom.totalInput.value = total.toFixed(2);
+    }
+
+    // Menu APIs
+    addCategory(name) {
+        const exists = this.menu.categories.some(c => c.name.toLowerCase() === name.toLowerCase());
+        if (exists) {
+            this.showToast('Catégorie existe déjà', 'info');
+            return;
+        }
+        const category = { id: this.generateId(), name, dishes: [] };
+        this.menu.categories.push(category);
+        this.saveMenuToStorage();
+        this.refreshCategoryOptions();
+        this.refreshDishCategorySelect();
+        this.renderMenuList();
+        this.showToast('Catégorie ajoutée', 'success');
+    }
+
+    addDish(categoryId, name, price) {
+        const category = this.menu.categories.find(c => c.id === categoryId);
+        if (!category) return;
+        const exists = category.dishes.some(d => d.name.toLowerCase() === name.toLowerCase());
+        if (exists) {
+            this.showToast('Plat existe déjà dans cette catégorie', 'info');
+            return;
+        }
+        category.dishes.push({ id: this.generateId(), name, price });
+        this.saveMenuToStorage();
+        this.refreshDishOptions();
+        this.renderMenuList();
+        this.showToast('Plat ajouté', 'success');
+    }
+
+    refreshCategoryOptions() {
+        const selects = [this.dom.categorySelect, this.dom.dishCategorySelect].filter(Boolean);
+        selects.forEach(select => {
+            const current = select.value;
+            select.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = select === this.dom.categorySelect ? 'Catégorie…' : 'Choisir catégorie…';
+            placeholder.selected = true;
+            select.appendChild(placeholder);
+            this.menu.categories.forEach(cat => {
+                const opt = document.createElement('option');
+                opt.value = cat.id;
+                opt.textContent = cat.name;
+                select.appendChild(opt);
+            });
+            // Add inline add option
+            const addOpt = document.createElement('option');
+            addOpt.value = '__add_category__';
+            addOpt.textContent = 'Ajouter une catégorie…';
+            select.appendChild(addOpt);
+            // Try to preserve selection
+            if ([...select.options].some(o => o.value === current)) select.value = current;
+        });
+    }
+
+    refreshDishCategorySelect() {
+        // Ensures add-dish form category select includes latest categories
+        this.refreshCategoryOptions();
+    }
+
+    refreshDishOptions() {
+        if (!this.dom.dishSelect) return;
+        const categoryId = this.dom.categorySelect ? this.dom.categorySelect.value : '';
+        const dishSelect = this.dom.dishSelect;
+        const current = dishSelect.value;
+        dishSelect.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Plat…';
+        placeholder.selected = true;
+        dishSelect.appendChild(placeholder);
+        if (categoryId) {
+            const category = this.menu.categories.find(c => c.id === categoryId);
+            if (category) {
+                category.dishes.forEach(dish => {
+                    const opt = document.createElement('option');
+                    opt.value = dish.id;
+                    opt.textContent = dish.name;
+                    dishSelect.appendChild(opt);
+                });
+            }
+        }
+        if ([...dishSelect.options].some(o => o.value === current)) dishSelect.value = current;
+    }
+
+    getSelectedCategory() {
+        const id = this.dom.categorySelect ? this.dom.categorySelect.value : '';
+        if (!id) return null;
+        return this.menu.categories.find(c => c.id === id) || null;
+    }
+
+    getSelectedDish() {
+        const category = this.getSelectedCategory();
+        if (!category || !this.dom.dishSelect) return null;
+        const dishId = this.dom.dishSelect.value;
+        if (!dishId) return null;
+        return category.dishes.find(d => d.id === dishId) || null;
     }
     
     sendAllOpenPads() {
@@ -407,6 +657,26 @@ class CuisyncApp {
        this.renderServerView();
        this.renderKitchenView();
    }
+
+    renderMenuList() {
+        if (!this.dom.menuList) return;
+        const categories = this.menu.categories;
+        if (!categories || categories.length === 0) {
+            this.dom.menuList.innerHTML = '<div class="empty-state"><p>Aucune catégorie/plat enregistrés</p></div>';
+            return;
+        }
+        const html = categories.map(cat => {
+            const dishes = cat.dishes || [];
+            const chips = dishes.length ? dishes.map(d => `<span class=\"menu-chip\">${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} €</span>`).join(' ') : '<span class=\"menu-chip\">(aucun plat)</span>';
+            return `
+                <div class=\"menu-category\">
+                    <h4>${this.escapeHTML(cat.name)}</h4>
+                    <div class=\"menu-dishes\">${chips}</div>
+                </div>
+            `;
+        }).join('');
+        this.dom.menuList.innerHTML = html;
+    }
    
    renderServerView() {
        const container = this.dom.serverPadsContainer;
@@ -486,6 +756,8 @@ class CuisyncApp {
                    <h4>${this.escapeHTML(item.dish)}</h4>
                    <div class="item-meta">
                        <span>${item.course}</span>
+                       ${item.category ? `<span>•</span><span>${this.escapeHTML(item.category)}</span>` : ''}
+                       ${typeof item.price === 'number' ? `<span>•</span><span>${item.price.toFixed(2)} €</span>` : ''}
                        ${item.note ? `<span>•</span><span class="item-note">${this.escapeHTML(item.note)}</span>` : ''}
                    </div>
                </div>
@@ -547,7 +819,7 @@ class CuisyncApp {
            return;
        }
        
-       const headers = ['Table', 'Statut', 'Plat', 'Quantité', 'Service', 'Note', 'Créé le', 'Envoyé le', 'Prêt le'];
+       const headers = ['Table', 'Statut', 'Catégorie', 'Plat', 'Quantité', 'Prix', 'Service', 'Note', 'Créé le', 'Envoyé le', 'Prêt le'];
        const rows = [headers];
        
        this.pads.forEach(pad => {
@@ -555,8 +827,10 @@ class CuisyncApp {
                rows.push([
                    pad.table,
                    pad.status,
+                   item.category || '',
                    item.dish,
                    item.qty,
+                   typeof item.price === 'number' ? item.price.toFixed(2) : '',
                    item.course,
                    item.note || '',
                    this.formatDate(pad.createdAt),
