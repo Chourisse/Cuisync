@@ -162,6 +162,12 @@ body {
     gap: var(--spacing-3);
 }
 
+.grid-row-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr auto;
+    gap: var(--spacing-3);
+}
+
 .or-separator {
     color: var(--muted);
     font-size: var(--font-size-sm);
@@ -343,6 +349,19 @@ input:invalid, select:invalid, textarea:invalid {
     display: grid;
     gap: var(--spacing-4);
 }
+.floor-table {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-4);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.floor-table.occupied {
+    border-color: var(--warning);
+}
+.floor-actions { display:flex; gap: var(--spacing-2); }
 
 .kitchen-pads.compact .pad {
     padding: var(--spacing-3);
@@ -462,6 +481,73 @@ input:invalid, select:invalid, textarea:invalid {
     display: flex;
     gap: var(--spacing-2);
     flex-wrap: wrap;
+}
+
+/* Checkout */
+.checkout-summary {
+    margin-top: var(--spacing-4);
+    padding-top: var(--spacing-3);
+    border-top: 1px solid var(--border);
+}
+.checkout-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--font-size-lg);
+}
+
+/* Host Controls */
+.checkout-controls {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-3);
+    margin-bottom: var(--spacing-3);
+}
+.controls-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--spacing-3);
+}
+.controls-row label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+.controls-row input[type="number"] {
+    width: 100%;
+}
+.controls-help {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+    margin-top: var(--spacing-2);
+}
+
+/* Payment Panel */
+.payment-panel {
+    margin-top: var(--spacing-3);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-3);
+}
+.payment-panel label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+.payment-inline {
+    display: flex;
+    gap: var(--spacing-2);
+    align-items: center;
+}
+@media (max-width: 768px) {
+    .payment-panel { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 768px) {
+    .controls-row {
+        grid-template-columns: 1fr 1fr;
+    }
 }
 
 .btn-sm {

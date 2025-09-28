@@ -4,10 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cuisync - Gestion de commandes</title>
+    <meta name="description" content="Cuisync facilite la prise de commandes au restaurant et la synchronisation entre salle et cuisine.">
+    <meta name="theme-color" content="#071827">
+    <meta name="color-scheme" content="dark light">
+    <meta property="og:title" content="Cuisync - Gestion de commandes">
+    <meta property="og:description" content="Synchronisez serveur et cuisine, envoyez, marquez prêt et exportez en CSV.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="branding/cuisync.png">
+    <meta property="og:locale" content="fr_FR">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Cuisync - Gestion de commandes">
+    <meta name="twitter:description" content="Prise de commandes rapide, envoi cuisine, suivi prêt et export CSV.">
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" href="branding/cuisync-icon.svg" type="image/svg+xml">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="branding/cuisync-icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
 </head>
 <body>
+    <noscript>Pour utiliser Cuisync, activez JavaScript dans votre navigateur.</noscript>
+    <a class="sr-only" href="#main">Aller au contenu principal</a>
     <!-- Toast notifications -->
     <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
@@ -25,11 +43,20 @@
                 <button id="kitchen-view-btn" class="view-btn" aria-pressed="false">
                     Cuisine
                 </button>
+                <button id="host-view-btn" class="view-btn" aria-pressed="false">
+                    Hôte
+                </button>
+                <button id="install-app-btn" class="view-btn" aria-pressed="false" hidden>
+                    Installer l'app
+                </button>
+                <button id="settings-btn" class="view-btn" aria-pressed="false">
+                    Paramètres
+                </button>
             </div>
         </div>
     </header>
 
-    <main class="main">
+    <main id="main" class="main" role="main">
         <!-- Server View -->
         <section id="server-view" class="view-section active">
             <div class="container">
@@ -46,15 +73,21 @@
 
                         <form id="dish-form" class="inline-form" autocomplete="off">
                             <label for="dish-category-select">Nouveau plat</label>
-                            <div class="grid-row-3">
+                            <div class="grid-row-4">
                                 <select id="dish-category-select" required>
                                     <option value="" selected>Choisir catégorie…</option>
                                 </select>
                                 <input type="text" id="dish-name-input" placeholder="Nom du plat" required>
                                 <input type="number" step="0.01" min="0" id="dish-price-input" placeholder="Prix (€)" required>
+                                <input type="number" step="0.1" min="0" max="100" id="dish-vat-input" placeholder="TVA %">
                                 <button type="submit" class="btn btn-primary">Ajouter plat</button>
                             </div>
                         </form>
+                        <div class="inline-row">
+                            <button id="menu-export-btn" class="btn btn-outline" type="button">Exporter menu (JSON)</button>
+                            <label class="btn btn-outline" for="menu-import-input">Importer menu (JSON)</label>
+                            <input id="menu-import-input" type="file" accept="application/json" style="display:none;">
+                        </div>
                     </div>
 
                     <div class="menu-list" id="menu-list">
@@ -63,6 +96,18 @@
                 </div>
                 <div class="form-section">
                     <h2>Nouvelle commande</h2>
+                    <div class="inline-row" style="margin-bottom:8px;">
+                        <input id="server-filter" type="text" placeholder="Filtrer par table…" aria-label="Filtrer par table">
+                    </div>
+                    <div class="form-section" style="margin-bottom:12px;">
+                        <h3>Plan de salle</h3>
+                        <div class="inline-row" style="margin-bottom:8px;">
+                            <input id="floor-add-table-input" type="number" min="1" max="99" placeholder="Numéro table">
+                            <button id="floor-add-table-btn" class="btn btn-secondary" type="button">Ajouter table</button>
+                            <button id="floor-clear-tables-btn" class="btn btn-outline" type="button">Vider plan</button>
+                        </div>
+                        <div id="floor-plan" class="pads-container"></div>
+                    </div>
                     <form id="order-form" class="order-form">
                         <div class="form-group">
                             <label for="table-input">Table *</label>
@@ -110,7 +155,7 @@
                             <label for="note-input">Note (optionnelle)</label>
                             <textarea id="note-input" rows="2" placeholder="Instructions Spécial..."></textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary">Ajouter Ã  la commande</button>
+                        <button type="submit" class="btn btn-primary">Ajouter à la commande</button>
                     </form>
                 </div>
 
@@ -142,6 +187,7 @@
                 <div class="kitchen-header">
                     <h2>Vue cuisine</h2>
                     <div class="kitchen-controls">
+                        <input id="kitchen-filter" type="text" placeholder="Filtrer table…" aria-label="Filtrer table" style="max-width:160px;">
                         <button id="compact-mode-btn" class="btn btn-outline" aria-pressed="false">
                             Mode compact
                         </button>
@@ -149,19 +195,128 @@
                 </div>
                 <div id="kitchen-pads-container" class="pads-container kitchen-pads">
                     <div class="empty-state">
-                        <p>Aucune commande envoyÃ©e</p>
+                        <p>Aucune commande envoyée</p>
                     </div>
                 </div>
             </div>
         </section>
+
+    <!-- Host/Checkout View -->
+    <section id="host-view" class="view-section">
+        <div class="container">
+            <div class="kitchen-header">
+                <h2>Hôte — Encaissement</h2>
+                <div class="kitchen-controls">
+                    <input id="host-filter" type="text" placeholder="Filtrer table…" aria-label="Filtrer table" style="max-width:160px;">
+                    <button id="host-export-payments-btn" class="btn btn-outline">Exporter paiements</button>
+                    <button id="host-reset-payments-btn" class="btn btn-outline">Réinitialiser paiements</button>
+                    <label class="btn btn-outline" style="gap:8px;">
+                        <input type="checkbox" id="host-per-item-vat" style="accent-color:#10B981;"> TVA par article
+                    </label>
+                    <button id="host-daily-report-btn" class="btn btn-outline">Rapport du jour</button>
+                </div>
+            </div>
+            <div id="host-pads-container" class="pads-container">
+                <div class="empty-state">
+                    <p>Aucune commande à encaisser</p>
+                </div>
+            </div>
+        </div>
+    </section>
     </main>
 
     <!-- Undo notification -->
     <div id="undo-notification" class="undo-notification hidden">
-        <span id="undo-message">Action annulÃ©e</span>
+        <span id="undo-message">Action annulée</span>
         <button id="undo-btn" class="undo-btn">Annuler (U)</button>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Settings Panel -->
+    <section id="settings-panel" class="form-section" hidden aria-labelledby="settings-title" role="dialog" aria-modal="true">
+        <h2 id="settings-title">Paramètres</h2>
+        <div class="container">
+            <div class="menu-forms">
+                <div class="inline-form">
+                    <label for="restaurant-name">Nom du restaurant</label>
+                    <div class="inline-row">
+                        <input id="restaurant-name" type="text" placeholder="Ex: Le Bon Goût">
+                    </div>
+                </div>
+                <div class="grid-row-3">
+                    <div class="form-group">
+                        <label for="restaurant-address">Adresse</label>
+                        <input id="restaurant-address" type="text" placeholder="Adresse">
+                    </div>
+                    <div class="form-group">
+                        <label for="restaurant-siret">SIRET</label>
+                        <input id="restaurant-siret" type="text" placeholder="SIRET">
+                    </div>
+                    <div class="form-group">
+                        <label for="restaurant-vat">TVA intracom</label>
+                        <input id="restaurant-vat" type="text" placeholder="FR..">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="receipt-footer">Pied de ticket</label>
+                    <textarea id="receipt-footer" rows="2" placeholder="Merci et à bientôt !"></textarea>
+                </div>
+
+                <h3>Imprimante thermique (WebUSB)</h3>
+                <div class="inline-row">
+                    <button id="printer-connect-btn" class="btn btn-secondary" type="button">Connecter</button>
+                    <button id="printer-test-btn" class="btn btn-outline" type="button">Test impression</button>
+                    <button id="printer-disconnect-btn" class="btn btn-outline" type="button">Déconnecter</button>
+                </div>
+                <div class="controls-help">Nécessite Chrome/Edge en HTTPS. Certaines imprimantes peuvent ne pas être compatibles.</div>
+
+                <h3>Cloud (préparation)</h3>
+                <div class="grid-row-3">
+                    <div class="form-group">
+                        <label for="cloud-url">Supabase URL</label>
+                        <input id="cloud-url" type="url" placeholder="https://...supabase.co">
+                    </div>
+                    <div class="form-group">
+                        <label for="cloud-key">Supabase Anon Key</label>
+                        <input id="cloud-key" type="password" placeholder="Anon Key">
+                    </div>
+                    <div class="form-group">
+                        <label><input type="checkbox" id="cloud-realtime" style="accent-color:#10B981;"> Temps réel</label>
+                        <div class="payment-inline">
+                            <button id="cloud-test-btn" class="btn btn-outline" type="button">Tester</button>
+                            <button id="settings-save-btn" class="btn btn-primary" type="button">Enregistrer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Sauvegarde</h3>
+                <div class="inline-row">
+                    <button id="backup-export-btn" class="btn btn-outline" type="button">Exporter données (JSON)</button>
+                    <label class="btn btn-outline" for="backup-import-input">Importer données (JSON)</label>
+                    <input id="backup-import-input" type="file" accept="application/json" style="display:none;">
+                </div>
+
+                <div class="inline-row" style="justify-content:flex-end">
+                    <button id="settings-close-btn" class="btn btn-secondary" type="button">Fermer</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="app.js" defer></script>
+    <script>
+    // Optionally load Supabase client from CDN if cloud used
+    (function(){
+        const settings = localStorage.getItem('cuisync-settings-restaurant');
+        try {
+            const s = settings ? JSON.parse(settings) : {};
+            if (s && s.cloudUrl && s.cloudKey) {
+                const el = document.createElement('script');
+                el.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+                el.defer = true;
+                document.head.appendChild(el);
+            }
+        } catch {}
+    })();
+    </script>
 </body>
 </html>
