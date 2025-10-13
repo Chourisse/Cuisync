@@ -435,6 +435,19 @@ class CuisyncApp {
         this.showToast('Plat ajouté', 'success');
     }
 
+	deleteCategory(categoryId) {
+		const category = this.menu.categories.find(c => c.id === categoryId);
+		if (!category) return;
+		const confirmed = confirm(`Supprimer la catégorie "${category.name}" et tous ses plats ?`);
+		if (!confirmed) return;
+		this.menu.categories = this.menu.categories.filter(c => c.id !== categoryId);
+		this.saveMenuToStorage();
+		this.refreshCategoryOptions();
+		this.refreshDishOptions();
+		this.renderMenuList();
+		this.showToast('Catégorie supprimée', 'success');
+	}
+
     refreshCategoryOptions() {
         const selects = [this.dom.categorySelect, this.dom.dishCategorySelect].filter(Boolean);
         selects.forEach(select => {
@@ -688,17 +701,27 @@ class CuisyncApp {
             this.dom.menuList.innerHTML = '<div class="empty-state"><p>Aucune catégorie/plat enregistrés</p></div>';
             return;
         }
-        const html = categories.map(cat => {
+		const html = categories.map(cat => {
             const dishes = cat.dishes || [];
             const chips = dishes.length ? dishes.map(d => `<span class=\"menu-chip\">${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} €</span>`).join(' ') : '<span class=\"menu-chip\">(aucun plat)</span>';
-            return `
-                <div class=\"menu-category\">
-                    <h4>${this.escapeHTML(cat.name)}</h4>
-                    <div class=\"menu-dishes\">${chips}</div>
-                </div>
-            `;
+			return `
+				<div class=\"menu-category\">
+					<h4>
+						${this.escapeHTML(cat.name)}
+						<button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"delete-category\" data-category-id=\"${cat.id}\" title=\"Supprimer la catégorie\">✕</button>
+					</h4>
+					<div class=\"menu-dishes\">${chips}</div>
+				</div>
+			`;
         }).join('');
         this.dom.menuList.innerHTML = html;
+		// Attach delete handlers
+		this.dom.menuList.querySelectorAll('[data-action="delete-category"]').forEach(btn => {
+			btn.addEventListener('click', (e) => {
+				const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
+				if (id) this.deleteCategory(id);
+			});
+		});
     }
    
    renderServerView() {
