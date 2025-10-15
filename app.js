@@ -54,6 +54,20 @@ class CuisyncApp {
             sendAllBtn: document.getElementById('send-all-btn'),
             exportBtn: document.getElementById('export-csv-btn'),
             compactModeBtn: document.getElementById('compact-mode-btn'),
+            exportSalesBtn: document.getElementById('export-sales-btn'),
+            // Payment panel
+            paymentPanel: document.getElementById('payment-panel'),
+            paymentTotal: document.getElementById('payment-total'),
+            paymentSubtotal: document.getElementById('payment-subtotal'),
+            paymentTax: document.getElementById('payment-tax'),
+            paymentDiscount: document.getElementById('payment-discount'),
+            paymentTip: document.getElementById('payment-tip'),
+            paymentMethod: document.getElementById('payment-method'),
+            paymentReceivedRow: document.getElementById('payment-received-row'),
+            paymentReceived: document.getElementById('payment-received'),
+            paymentChange: document.getElementById('payment-change'),
+            paymentCancel: document.getElementById('payment-cancel'),
+            paymentConfirm: document.getElementById('payment-confirm'),
             
             // Containers
             serverPadsContainer: document.getElementById('server-pads-container'),
@@ -78,6 +92,11 @@ class CuisyncApp {
         
         // Focus first input
         this.dom.tableInput.focus();
+
+        // Register service worker for PWA (non-blocking)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(() => {});
+        }
     }
     
     setupEventListeners() {
@@ -173,6 +192,33 @@ class CuisyncApp {
         this.dom.sendAllBtn.addEventListener('click', () => this.sendAllOpenPads());
         this.dom.exportBtn.addEventListener('click', () => this.exportToCSV());
         this.dom.compactModeBtn.addEventListener('click', () => this.toggleCompactMode());
+        if (this.dom.exportSalesBtn) {
+            this.dom.exportSalesBtn.addEventListener('click', () => this.exportSalesCSV());
+        }
+
+        // POS settings
+        const posForm = document.getElementById('pos-settings-form');
+        if (posForm) {
+            posForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.savePOSSettings();
+            });
+        }
+
+        // Payment panel events
+        if (this.dom.paymentMethod) {
+            this.dom.paymentMethod.addEventListener('change', () => this.updatePaymentUI());
+        }
+        if (this.dom.paymentReceived) {
+            this.dom.paymentReceived.addEventListener('input', () => this.updatePaymentChange());
+            this.dom.paymentReceived.addEventListener('change', () => this.updatePaymentChange());
+        }
+        if (this.dom.paymentCancel) {
+            this.dom.paymentCancel.addEventListener('click', () => this.closePaymentPanel());
+        }
+        if (this.dom.paymentConfirm) {
+            this.dom.paymentConfirm.addEventListener('click', () => this.confirmPayment());
+        }
 
         // Live total recalculation
         if (this.dom.qtyInput) {
@@ -209,9 +255,13 @@ class CuisyncApp {
             try {
                 localStorage.setItem('cuisync-pads', JSON.stringify(this.pads));
                 localStorage.setItem('cuisync-settings', JSON.stringify({
-                    compactMode: this.isCompactMode
+                    compactMode: this.isCompactMode,
+                    pos: this.posSettings || null
                 }));
                 localStorage.setItem('cuisync-menu', JSON.stringify(this.menu));
+                if (this.sales && Array.isArray(this.sales)) {
+                    localStorage.setItem('cuisync-sales', JSON.stringify(this.sales));
+                }
             } catch (error) {
                 console.error('Failed to save to localStorage:', error);
                 this.showToast('Erreur de sauvegarde', 'error');
@@ -232,7 +282,10 @@ class CuisyncApp {
             if (savedSettings) {
                 const settings = JSON.parse(savedSettings);
                 this.isCompactMode = settings.compactMode || false;
+                this.posSettings = settings.pos || { taxRatePct: 10, currency: '€', defaultTipPct: 0, printAfterPay: false };
             }
+            const savedSales = localStorage.getItem('cuisync-sales');
+            this.sales = savedSales ? JSON.parse(savedSales) : [];
         } catch (error) {
             console.error('Failed to load from localStorage:', error);
             this.pads = [];
@@ -433,6 +486,66 @@ class CuisyncApp {
         this.refreshDishOptions();
         this.renderMenuList();
         this.showToast('Plat ajouté', 'success');
+    }
+
+    editCategory(categoryId) {
+        const category = this.menu.categories.find(c => c.id === categoryId);
+        if (!category) return;
+        const newName = prompt('Nouveau nom de la catégorie', category.name);
+        if (!newName || !newName.trim()) return;
+        const name = newName.trim();
+        const duplicate = this.menu.categories.some(c => c.id !== categoryId && c.name.toLowerCase() === name.toLowerCase());
+        if (duplicate) {
+            this.showToast('Une catégorie avec ce nom existe déjà', 'error');
+            return;
+        }
+        category.name = name;
+        this.saveMenuToStorage();
+        this.refreshCategoryOptions();
+        this.renderMenuList();
+        this.showToast('Catégorie renommée', 'success');
+    }
+
+    editDish(categoryId, dishId) {
+        const category = this.menu.categories.find(c => c.id === categoryId);
+        if (!category) return;
+        const dish = (category.dishes || []).find(d => d.id === dishId);
+        if (!dish) return;
+        const newName = prompt('Nouveau nom du plat', dish.name);
+        if (!newName || !newName.trim()) return;
+        const name = newName.trim();
+        const priceStr = prompt('Nouveau prix (€)', typeof dish.price === 'number' ? dish.price.toFixed(2) : '0.00');
+        if (priceStr === null) return;
+        const price = parseFloat(priceStr);
+        if (isNaN(price) || price < 0) {
+            this.showToast('Prix invalide', 'error');
+            return;
+        }
+        const duplicate = category.dishes.some(d => d.id !== dishId && d.name.toLowerCase() === name.toLowerCase());
+        if (duplicate) {
+            this.showToast('Un plat avec ce nom existe déjà', 'error');
+            return;
+        }
+        dish.name = name;
+        dish.price = price;
+        this.saveMenuToStorage();
+        this.refreshDishOptions();
+        this.renderMenuList();
+        this.showToast('Plat modifié', 'success');
+    }
+
+    deleteDish(categoryId, dishId) {
+        const category = this.menu.categories.find(c => c.id === categoryId);
+        if (!category) return;
+        const dish = (category.dishes || []).find(d => d.id === dishId);
+        if (!dish) return;
+        const confirmed = confirm(`Supprimer le plat "${dish.name}" ?`);
+        if (!confirmed) return;
+        category.dishes = category.dishes.filter(d => d.id !== dishId);
+        this.saveMenuToStorage();
+        this.refreshDishOptions();
+        this.renderMenuList();
+        this.showToast('Plat supprimé', 'success');
     }
 
 	deleteCategory(categoryId) {
@@ -703,11 +816,18 @@ class CuisyncApp {
         }
 		const html = categories.map(cat => {
             const dishes = cat.dishes || [];
-            const chips = dishes.length ? dishes.map(d => `<span class=\"menu-chip\">${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} €</span>`).join(' ') : '<span class=\"menu-chip\">(aucun plat)</span>';
+            const chips = dishes.length ? dishes.map(d => `
+                <span class=\"menu-chip\">
+                    <span>${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} €</span>
+                    <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"edit-dish\" data-category-id=\"${cat.id}\" data-dish-id=\"${d.id}\" title=\"Modifier le plat\">✎</button>
+                    <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"delete-dish\" data-category-id=\"${cat.id}\" data-dish-id=\"${d.id}\" title=\"Supprimer le plat\">✕</button>
+                </span>
+            `).join(' ') : '<span class=\"menu-chip\">(aucun plat)</span>';
 			return `
 				<div class=\"menu-category\">
 					<h4>
 						${this.escapeHTML(cat.name)}
+                        <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"edit-category\" data-category-id=\"${cat.id}\" title=\"Renommer la catégorie\">✎</button>
 						<button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"delete-category\" data-category-id=\"${cat.id}\" title=\"Supprimer la catégorie\">✕</button>
 					</h4>
 					<div class=\"menu-dishes\">${chips}</div>
@@ -715,13 +835,34 @@ class CuisyncApp {
 			`;
         }).join('');
         this.dom.menuList.innerHTML = html;
-		// Attach delete handlers
+		// Attach handlers
 		this.dom.menuList.querySelectorAll('[data-action="delete-category"]').forEach(btn => {
 			btn.addEventListener('click', (e) => {
 				const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
 				if (id) this.deleteCategory(id);
 			});
 		});
+
+        this.dom.menuList.querySelectorAll('[data-action="edit-category"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
+                if (id) this.editCategory(id);
+            });
+        });
+
+        this.dom.menuList.querySelectorAll('[data-action="edit-dish"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const { categoryId, dishId } = e.currentTarget.dataset || {};
+                if (categoryId && dishId) this.editDish(categoryId, dishId);
+            });
+        });
+
+        this.dom.menuList.querySelectorAll('[data-action="delete-dish"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const { categoryId, dishId } = e.currentTarget.dataset || {};
+                if (categoryId && dishId) this.deleteDish(categoryId, dishId);
+            });
+        });
     }
    
    renderServerView() {
@@ -817,7 +958,7 @@ class CuisyncApp {
                         this.printPadReceipt(padId);
                         break;
                     case 'pay':
-                        this.markPadPaid(padId);
+                        this.openPaymentPanel(padId);
                         break;
                    case 'delete':
                        this.deletePad(padId);
@@ -893,18 +1034,20 @@ class CuisyncApp {
           }
        }
        
-       return `
-           <div class="pad status-${pad.status}">
-               <div class="pad-header">
-                   <h3>Table ${pad.table}</h3>
-                   <span class="pad-status ${pad.status}">${statusText[pad.status]}</span>
-               </div>
-               <div class="pad-items">
-                   ${itemsHTML}
-               </div>
-               ${actionsHTML ? `<div class="pad-actions">${actionsHTML}</div>` : ''}
-           </div>
-       `;
+      const padTotal = this.getPadTotal(pad);
+      return `
+          <div class="pad status-${pad.status}">
+              <div class="pad-header">
+                  <h3>Table ${pad.table}</h3>
+                  <span class="pad-status ${pad.status}">${statusText[pad.status]}</span>
+              </div>
+              <div class="pad-items">
+                  ${itemsHTML}
+              </div>
+              ${padTotal > 0 ? `<div class="pad-total">Total: <strong>${padTotal.toFixed(2)} €</strong></div>` : ''}
+              ${actionsHTML ? `<div class="pad-actions">${actionsHTML}</div>` : ''}
+          </div>
+      `;
    }
 
     getPadTotal(pad) {
@@ -985,6 +1128,53 @@ class CuisyncApp {
         win.document.close();
     }
 
+    savePOSSettings() {
+        const taxRateInput = document.getElementById('pos-tva');
+        const currencyInput = document.getElementById('pos-currency');
+        const tipInput = document.getElementById('pos-default-tip');
+        const printAfterPayInput = document.getElementById('pos-print-after-pay');
+        this.posSettings = {
+            taxRatePct: Math.max(0, parseFloat(taxRateInput && taxRateInput.value ? taxRateInput.value : '0') || 0),
+            currency: currencyInput && currencyInput.value ? currencyInput.value : '€',
+            defaultTipPct: Math.max(0, parseFloat(tipInput && tipInput.value ? tipInput.value : '0') || 0),
+            printAfterPay: !!(printAfterPayInput && printAfterPayInput.checked)
+        };
+        this.saveToStorage();
+        this.showToast('Paramètres enregistrés', 'success');
+    }
+
+    recordSale(sale) {
+        if (!this.sales) this.sales = [];
+        this.sales.push(sale);
+        this.saveToStorage();
+    }
+
+    exportSalesCSV() {
+        if (!this.sales || this.sales.length === 0) {
+            this.showToast('Aucune vente à exporter', 'info');
+            return;
+        }
+        const headers = ['Date/Heure','Table','Sous-total','Remise','TVA','Pourboire','Total','Méthode'];
+        const rows = [headers];
+        this.sales.forEach(s => {
+            rows.push([
+                this.formatDate(s.createdAt),
+                s.table,
+                s.subtotal.toFixed(2),
+                s.discount.toFixed(2),
+                s.tax.toFixed(2),
+                s.tip.toFixed(2),
+                s.total.toFixed(2),
+                s.method
+            ]);
+        });
+        const csvContent = rows.map(r => r.map(f => `"${String(f).replace(/"/g,'""')}"`).join(',')).join('\n');
+        const timestamp = new Date().toISOString().slice(0,19).replace(/[:.]/g,'-');
+        const filename = `cuisync-ventes-${timestamp}.csv`;
+        this.downloadFile(csvContent, filename, 'text/csv');
+        this.showToast('Export des ventes téléchargé', 'success');
+    }
+
     markPadPaid(padId) {
         const padIndex = this.pads.findIndex(p => p.id === padId);
         if (padIndex === -1) return;
@@ -1008,6 +1198,93 @@ class CuisyncApp {
         
         this.showToast(`Table ${pad.table} encaissée`, 'success');
         this.showUndoNotification('Paiement enregistré');
+    }
+
+    openPaymentPanel(padId) {
+        this.currentPaymentPadId = padId;
+        const pad = this.pads.find(p => p.id === padId);
+        if (!pad || !this.dom.paymentPanel) return;
+        const subtotal = this.getPadTotal(pad);
+        const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+        if (this.dom.paymentSubtotal) this.dom.paymentSubtotal.textContent = `${subtotal.toFixed(2)} ${this.posSettings?.currency || '€'}`;
+        if (this.dom.paymentTax) this.dom.paymentTax.textContent = `${(subtotal * taxRate / 100).toFixed(2)} ${this.posSettings?.currency || '€'}`;
+        if (this.dom.paymentTotal) this.dom.paymentTotal.textContent = `${(subtotal + (subtotal * taxRate / 100)).toFixed(2)} ${this.posSettings?.currency || '€'}`;
+        if (this.dom.paymentMethod) this.dom.paymentMethod.value = 'cash';
+        if (this.dom.paymentReceived) this.dom.paymentReceived.value = '';
+        if (this.dom.paymentChange) this.dom.paymentChange.textContent = '0,00 €';
+        if (this.dom.paymentDiscount) this.dom.paymentDiscount.value = '';
+        if (this.dom.paymentTip) this.dom.paymentTip.value = this.posSettings ? String((subtotal * (this.posSettings.defaultTipPct || 0) / 100).toFixed(2)) : '';
+        this.updatePaymentUI();
+        this.dom.paymentPanel.classList.remove('hidden');
+    }
+
+    closePaymentPanel() {
+        if (!this.dom.paymentPanel) return;
+        this.dom.paymentPanel.classList.add('hidden');
+        this.currentPaymentPadId = null;
+    }
+
+    updatePaymentUI() {
+        if (!this.dom.paymentMethod || !this.dom.paymentReceivedRow) return;
+        const isCash = this.dom.paymentMethod.value === 'cash';
+        this.dom.paymentReceivedRow.style.display = isCash ? 'grid' : 'none';
+        this.updatePaymentChange();
+    }
+
+    updatePaymentChange() {
+        if (!this.currentPaymentPadId) return;
+        const pad = this.pads.find(p => p.id === this.currentPaymentPadId);
+        if (!pad) return;
+        const subtotal = this.getPadTotal(pad);
+        const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+        const discount = parseFloat(this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0') || 0;
+        const tip = parseFloat(this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0') || 0;
+        const total = Math.max(0, subtotal - discount) + (subtotal * taxRate / 100) + tip;
+        if (!this.dom.paymentMethod || !this.dom.paymentChange) return;
+        if (this.dom.paymentMethod.value !== 'cash') {
+            this.dom.paymentChange.textContent = '0,00 €';
+            return;
+        }
+        const received = parseFloat(this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0');
+        const change = (isNaN(received) ? 0 : received) - total;
+        const display = change >= 0 ? `${change.toFixed(2)} ${this.posSettings?.currency || '€'}` : '—';
+        this.dom.paymentChange.textContent = display;
+    }
+
+    confirmPayment() {
+        if (!this.currentPaymentPadId) return;
+        const padId = this.currentPaymentPadId;
+        const method = this.dom.paymentMethod ? this.dom.paymentMethod.value : 'other';
+        const pad = this.pads.find(p => p.id === padId);
+        const subtotal = this.getPadTotal(pad);
+        const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+        const discount = parseFloat(this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0') || 0;
+        const tip = parseFloat(this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0') || 0;
+        const total = Math.max(0, subtotal - discount) + (subtotal * taxRate / 100) + tip;
+        if (method === 'cash') {
+            const received = parseFloat(this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0');
+            if (isNaN(received) || received < total) {
+                this.showToast('Montant reçu insuffisant', 'error');
+                return;
+            }
+        }
+        // Record sale
+        this.recordSale({
+            padId,
+            table: pad.table,
+            subtotal,
+            discount,
+            tax: subtotal * taxRate / 100,
+            tip,
+            total,
+            method,
+            createdAt: new Date().toISOString()
+        });
+        this.closePaymentPanel();
+        this.markPadPaid(padId);
+        if (this.posSettings && this.posSettings.printAfterPay) {
+            this.printPadReceipt(padId);
+        }
     }
    
    updateSendAllButton() {

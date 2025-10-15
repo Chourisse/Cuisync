@@ -196,6 +196,14 @@ body {
     border-radius: 999px;
     padding: var(--spacing-1) var(--spacing-2);
     font-size: var(--font-size-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.btn-icon {
+    padding: 0 var(--spacing-2);
+    line-height: 1.2;
 }
 
 /* Form Styles */
@@ -414,6 +422,15 @@ input:invalid, select:invalid, textarea:invalid {
     margin-bottom: var(--spacing-4);
 }
 
+.pad-total {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-4);
+    color: var(--text);
+}
+
 .pad-item {
     display: flex;
     justify-content: space-between;
@@ -598,6 +615,47 @@ input:invalid, select:invalid, textarea:invalid {
         right: var(--spacing-3);
         max-width: none;
     }
+}
+
+/* Payment Panel */
+.payment-panel {
+    position: fixed;
+    right: var(--spacing-4);
+    bottom: var(--spacing-4);
+    width: 340px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    padding: var(--spacing-6);
+    z-index: 1000;
+}
+
+.payment-panel.hidden {
+    display: none;
+}
+
+.payment-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-3);
+    align-items: center;
+    margin-bottom: var(--spacing-3);
+}
+
+.payment-row input[type="number"] {
+    width: 100%;
+}
+
+.payment-row label {
+    color: var(--muted);
+}
+
+.payment-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-4);
 }
 
 @media (min-width: 769px) {
