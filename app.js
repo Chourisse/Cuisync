@@ -7,10 +7,33 @@ class CuisyncApp {
     constructor() {
         this.pads = [];
         this.menu = { categories: [] };
+        this.tables = []; // Gestion des tables avec statut
+        this.reservations = []; // Gestion des réservations
+        this.history = []; // Historique des commandes servies
+        this.events = []; // Événements spéciaux
+        this.clientPreferences = []; // Préférences des clients récurrents
+        this.restaurantSettings = {
+            name: '',
+            phone: '',
+            email: '',
+            address: '',
+            openingHours: {
+                monday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } },
+                tuesday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } },
+                wednesday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } },
+                thursday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } },
+                friday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } },
+                saturday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } },
+                sunday: { open: '12:00', close: '14:00', evening: { open: '19:00', close: '22:00' } }
+            }
+        };
         this.currentView = 'server';
+        this.currentReservationDate = new Date();
         this.undoStack = [];
         this.isCompactMode = false;
+        this.isFloorPlanView = false;
         this.debounceTimer = null;
+        this.maxTables = 20; // Nombre maximum de tables par défaut
         
         // DOM elements cache
         this.dom = {};
@@ -32,12 +55,16 @@ class CuisyncApp {
             // Form
             orderForm: document.getElementById('order-form'),
             tableInput: document.getElementById('table-input'),
+            coversInput: document.getElementById('covers-input'),
+            clientNameInput: document.getElementById('client-name-input'),
+            tableNotesInput: document.getElementById('table-notes-input'),
             dishInput: document.getElementById('dish-input'),
             categorySelect: document.getElementById('category-select'),
             dishSelect: document.getElementById('dish-select'),
             qtyInput: document.getElementById('qty-input'),
             courseInput: document.getElementById('course-input'),
             noteInput: document.getElementById('note-input'),
+            itemAllergenCheck: document.getElementById('item-allergen-check'),
             priceInput: document.getElementById('price-input'),
             totalInput: document.getElementById('total-input'),
             
@@ -48,7 +75,84 @@ class CuisyncApp {
             dishCategorySelect: document.getElementById('dish-category-select'),
             dishNameInput: document.getElementById('dish-name-input'),
             dishPriceInput: document.getElementById('dish-price-input'),
+            dishAvailabilitySelect: document.getElementById('dish-availability-select'),
+            dishAllergensInput: document.getElementById('dish-allergens-input'),
+            dishDescriptionInput: document.getElementById('dish-description-input'),
             menuList: document.getElementById('menu-list'),
+            
+            // Tables & Reservations
+            tablesGrid: document.getElementById('tables-grid'),
+            addTableBtn: document.getElementById('add-table-btn'),
+            maxTablesInput: document.getElementById('max-tables-input'),
+            saveTablesConfigBtn: document.getElementById('save-tables-config-btn'),
+            tablesViewBtn: document.getElementById('tables-view-btn'),
+            reservationsViewBtn: document.getElementById('reservations-view-btn'),
+            statsViewBtn: document.getElementById('stats-view-btn'),
+            reservationForm: document.getElementById('reservation-form'),
+            reservationNameInput: document.getElementById('reservation-name-input'),
+            reservationCoversInput: document.getElementById('reservation-covers-input'),
+            reservationDateInput: document.getElementById('reservation-date-input'),
+            reservationTableSelect: document.getElementById('reservation-table-select'),
+            reservationPhoneInput: document.getElementById('reservation-phone-input'),
+            reservationNotesInput: document.getElementById('reservation-notes-input'),
+            reservationsList: document.getElementById('reservations-list'),
+            
+            // Statistics
+            statisticsView: document.getElementById('statistics-view'),
+            statsPeriodSelect: document.getElementById('stats-period-select'),
+            statRevenue: document.getElementById('stat-revenue'),
+            statOrders: document.getElementById('stat-orders'),
+            statTables: document.getElementById('stat-tables'),
+            statAverage: document.getElementById('stat-average'),
+            topDishesList: document.getElementById('top-dishes-list'),
+            
+            // History
+            historySection: document.getElementById('history-section'),
+            historyFilterSelect: document.getElementById('history-filter-select'),
+            historySearchInput: document.getElementById('history-search-input'),
+            historyList: document.getElementById('history-list'),
+            
+            // Payment split
+            splitPaymentRow: document.getElementById('split-payment-row'),
+            splitAmount: document.getElementById('split-amount'),
+            
+            // Reservations calendar
+            reservationCalendar: document.getElementById('reservation-calendar'),
+            currentDateDisplay: document.getElementById('current-date-display'),
+            prevDayBtn: document.getElementById('prev-day-btn'),
+            nextDayBtn: document.getElementById('next-day-btn'),
+            todayBtn: document.getElementById('today-btn'),
+            reservationTimeInput: document.getElementById('reservation-time-input'),
+            reservationEmailInput: document.getElementById('reservation-email-input'),
+            reservationOccasionSelect: document.getElementById('reservation-occasion-select'),
+            
+            // Tables view
+            gridViewBtn: document.getElementById('grid-view-btn'),
+            floorPlanViewBtn: document.getElementById('floor-plan-view-btn'),
+            tablesGridView: document.getElementById('tables-grid-view'),
+            tablesFloorPlanView: document.getElementById('tables-floor-plan-view'),
+            floorPlan: document.getElementById('floor-plan'),
+            
+            // Restaurant settings
+            restaurantSettingsForm: document.getElementById('restaurant-settings-form'),
+            restaurantNameInput: document.getElementById('restaurant-name-input'),
+            restaurantPhoneInput: document.getElementById('restaurant-phone-input'),
+            restaurantEmailInput: document.getElementById('restaurant-email-input'),
+            restaurantAddressInput: document.getElementById('restaurant-address-input'),
+            openingHoursContainer: document.getElementById('opening-hours-container'),
+            
+            // Events
+            eventForm: document.getElementById('event-form'),
+            eventNameInput: document.getElementById('event-name-input'),
+            eventDateInput: document.getElementById('event-date-input'),
+            eventTimeInput: document.getElementById('event-time-input'),
+            eventDescriptionInput: document.getElementById('event-description-input'),
+            eventCapacityInput: document.getElementById('event-capacity-input'),
+            eventsList: document.getElementById('events-list'),
+            
+            // Client preferences
+            clientSearchInput: document.getElementById('client-search-input'),
+            clientPreferencesList: document.getElementById('client-preferences-list'),
             
             // Actions
             sendAllBtn: document.getElementById('send-all-btn'),
@@ -83,15 +187,30 @@ class CuisyncApp {
     init() {
         this.loadFromStorage();
         this.loadMenuFromStorage();
+        this.loadTablesFromStorage();
+        this.loadReservationsFromStorage();
+        this.loadHistoryFromStorage();
+        this.loadEventsFromStorage();
+        this.loadClientPreferencesFromStorage();
+        this.loadRestaurantSettingsFromStorage();
         this.setupEventListeners();
         this.refreshCategoryOptions();
         this.refreshDishOptions();
+        this.refreshReservationTableSelect();
         this.renderMenuList();
+        this.renderTablesGrid();
+        this.renderReservations();
+        this.renderReservationCalendar();
+        this.renderHistory();
+        this.renderEvents();
+        this.renderOpeningHours();
+        this.renderClientPreferences();
         this.renderViews();
         this.updateSendAllButton();
+        this.updateStatistics();
         
         // Focus first input
-        this.dom.tableInput.focus();
+        if (this.dom.tableInput) this.dom.tableInput.focus();
 
         // Register service worker for PWA (non-blocking)
         if ('serviceWorker' in navigator) {
@@ -129,10 +248,15 @@ class CuisyncApp {
                 const categoryId = this.dom.dishCategorySelect.value;
                 const name = this.dom.dishNameInput.value.trim();
                 const price = parseFloat(this.dom.dishPriceInput.value);
+                const availability = this.dom.dishAvailabilitySelect ? this.dom.dishAvailabilitySelect.value : 'available';
+                const allergens = this.dom.dishAllergensInput ? this.dom.dishAllergensInput.value.trim() : '';
+                const description = this.dom.dishDescriptionInput ? this.dom.dishDescriptionInput.value.trim() : '';
                 if (!categoryId || !name || isNaN(price)) return;
-                this.addDish(categoryId, name, price);
+                this.addDish(categoryId, name, price, { availability, allergens, description });
                 this.dom.dishNameInput.value = '';
                 this.dom.dishPriceInput.value = '';
+                if (this.dom.dishAllergensInput) this.dom.dishAllergensInput.value = '';
+                if (this.dom.dishDescriptionInput) this.dom.dishDescriptionInput.value = '';
             });
         }
         if (this.dom.categorySelect) {
@@ -160,10 +284,16 @@ class CuisyncApp {
         if (this.dom.dishSelect) {
             this.dom.dishSelect.addEventListener('change', () => {
                 const selectedDish = this.getSelectedDish();
-                if (selectedDish && this.dom.priceInput) {
-                    this.dom.priceInput.value = selectedDish.price.toFixed(2);
+                if (selectedDish) {
+                    if (this.dom.priceInput) {
+                        this.dom.priceInput.value = selectedDish.price.toFixed(2);
+                    }
                     // Also mirror name in free text input for visibility
                     this.dom.dishInput.value = selectedDish.name;
+                    // Check availability
+                    if (selectedDish.availability === 'unavailable') {
+                        this.showToast('Ce plat n\'est plus disponible', 'warning');
+                    }
                 }
                 this.recalculateTotal();
             });
@@ -207,7 +337,112 @@ class CuisyncApp {
 
         // Payment panel events
         if (this.dom.paymentMethod) {
-            this.dom.paymentMethod.addEventListener('change', () => this.updatePaymentUI());
+            this.dom.paymentMethod.addEventListener('change', () => {
+                this.updatePaymentUI();
+                if (this.dom.splitPaymentRow) {
+                    this.dom.splitPaymentRow.style.display = this.dom.paymentMethod.value === 'split' ? 'grid' : 'none';
+                }
+            });
+        }
+        
+        // Tables management
+        if (this.dom.addTableBtn) {
+            this.dom.addTableBtn.addEventListener('click', () => this.addTable());
+        }
+        if (this.dom.saveTablesConfigBtn) {
+            this.dom.saveTablesConfigBtn.addEventListener('click', () => this.saveTablesConfig());
+        }
+        if (this.dom.tablesViewBtn) {
+            this.dom.tablesViewBtn.addEventListener('click', () => this.toggleHostView('tables'));
+        }
+        if (this.dom.reservationsViewBtn) {
+            this.dom.reservationsViewBtn.addEventListener('click', () => this.toggleHostView('reservations'));
+        }
+        if (this.dom.statsViewBtn) {
+            this.dom.statsViewBtn.addEventListener('click', () => this.toggleHostView('stats'));
+        }
+        
+        // Reservations
+        if (this.dom.reservationForm) {
+            this.dom.reservationForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.addReservation();
+            });
+        }
+        
+        // Statistics
+        if (this.dom.statsPeriodSelect) {
+            this.dom.statsPeriodSelect.addEventListener('change', () => this.updateStatistics());
+        }
+        
+        // History
+        if (this.dom.historyFilterSelect) {
+            this.dom.historyFilterSelect.addEventListener('change', () => this.renderHistory());
+        }
+        if (this.dom.historySearchInput) {
+            this.dom.historySearchInput.addEventListener('input', () => this.renderHistory());
+        }
+        
+        // Reservation calendar
+        if (this.dom.prevDayBtn) {
+            this.dom.prevDayBtn.addEventListener('click', () => {
+                this.currentReservationDate.setDate(this.currentReservationDate.getDate() - 1);
+                this.renderReservationCalendar();
+            });
+        }
+        if (this.dom.nextDayBtn) {
+            this.dom.nextDayBtn.addEventListener('click', () => {
+                this.currentReservationDate.setDate(this.currentReservationDate.getDate() + 1);
+                this.renderReservationCalendar();
+            });
+        }
+        if (this.dom.todayBtn) {
+            this.dom.todayBtn.addEventListener('click', () => {
+                this.currentReservationDate = new Date();
+                this.renderReservationCalendar();
+            });
+        }
+        
+        // Tables view toggle
+        if (this.dom.gridViewBtn) {
+            this.dom.gridViewBtn.addEventListener('click', () => {
+                this.isFloorPlanView = false;
+                this.dom.gridViewBtn.classList.add('active');
+                this.dom.floorPlanViewBtn.classList.remove('active');
+                this.dom.tablesGridView.classList.remove('hidden');
+                this.dom.tablesFloorPlanView.classList.add('hidden');
+            });
+        }
+        if (this.dom.floorPlanViewBtn) {
+            this.dom.floorPlanViewBtn.addEventListener('click', () => {
+                this.isFloorPlanView = true;
+                this.dom.floorPlanViewBtn.classList.add('active');
+                this.dom.gridViewBtn.classList.remove('active');
+                this.dom.tablesGridView.classList.add('hidden');
+                this.dom.tablesFloorPlanView.classList.remove('hidden');
+                this.renderFloorPlan();
+            });
+        }
+        
+        // Restaurant settings
+        if (this.dom.restaurantSettingsForm) {
+            this.dom.restaurantSettingsForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveRestaurantSettings();
+            });
+        }
+        
+        // Events
+        if (this.dom.eventForm) {
+            this.dom.eventForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.addEvent();
+            });
+        }
+        
+        // Client search
+        if (this.dom.clientSearchInput) {
+            this.dom.clientSearchInput.addEventListener('input', () => this.renderClientPreferences());
         }
         if (this.dom.paymentReceived) {
             this.dom.paymentReceived.addEventListener('input', () => this.updatePaymentChange());
@@ -256,11 +491,30 @@ class CuisyncApp {
                 localStorage.setItem('cuisync-pads', JSON.stringify(this.pads));
                 localStorage.setItem('cuisync-settings', JSON.stringify({
                     compactMode: this.isCompactMode,
-                    pos: this.posSettings || null
+                    pos: this.posSettings || null,
+                    maxTables: this.maxTables
                 }));
                 localStorage.setItem('cuisync-menu', JSON.stringify(this.menu));
                 if (this.sales && Array.isArray(this.sales)) {
                     localStorage.setItem('cuisync-sales', JSON.stringify(this.sales));
+                }
+                if (this.tables && Array.isArray(this.tables)) {
+                    localStorage.setItem('cuisync-tables', JSON.stringify(this.tables));
+                }
+                if (this.reservations && Array.isArray(this.reservations)) {
+                    localStorage.setItem('cuisync-reservations', JSON.stringify(this.reservations));
+                }
+                if (this.history && Array.isArray(this.history)) {
+                    localStorage.setItem('cuisync-history', JSON.stringify(this.history));
+                }
+                if (this.events && Array.isArray(this.events)) {
+                    localStorage.setItem('cuisync-events', JSON.stringify(this.events));
+                }
+                if (this.clientPreferences && Array.isArray(this.clientPreferences)) {
+                    localStorage.setItem('cuisync-client-preferences', JSON.stringify(this.clientPreferences));
+                }
+                if (this.restaurantSettings) {
+                    localStorage.setItem('cuisync-restaurant-settings', JSON.stringify(this.restaurantSettings));
                 }
             } catch (error) {
                 console.error('Failed to save to localStorage:', error);
@@ -283,6 +537,7 @@ class CuisyncApp {
                 const settings = JSON.parse(savedSettings);
                 this.isCompactMode = settings.compactMode || false;
                 this.posSettings = settings.pos || { taxRatePct: 10, currency: '€', defaultTipPct: 0, printAfterPay: false };
+                this.maxTables = settings.maxTables || 20;
             }
             const savedSales = localStorage.getItem('cuisync-sales');
             this.sales = savedSales ? JSON.parse(savedSales) : [];
@@ -301,6 +556,106 @@ class CuisyncApp {
         } catch (error) {
             console.error('Failed to load menu from localStorage:', error);
             this.menu = { categories: [] };
+        }
+    }
+    
+    loadTablesFromStorage() {
+        try {
+            const savedTables = localStorage.getItem('cuisync-tables');
+            if (savedTables) {
+                this.tables = JSON.parse(savedTables);
+            } else {
+                // Initialiser avec des tables par défaut
+                this.initializeDefaultTables();
+            }
+        } catch (error) {
+            console.error('Failed to load tables from localStorage:', error);
+            this.initializeDefaultTables();
+        }
+    }
+    
+    loadReservationsFromStorage() {
+        try {
+            const savedReservations = localStorage.getItem('cuisync-reservations');
+            if (savedReservations) {
+                this.reservations = JSON.parse(savedReservations);
+            } else {
+                this.reservations = [];
+            }
+        } catch (error) {
+            console.error('Failed to load reservations from localStorage:', error);
+            this.reservations = [];
+        }
+    }
+    
+    loadHistoryFromStorage() {
+        try {
+            const savedHistory = localStorage.getItem('cuisync-history');
+            if (savedHistory) {
+                this.history = JSON.parse(savedHistory);
+            } else {
+                this.history = [];
+            }
+        } catch (error) {
+            console.error('Failed to load history from localStorage:', error);
+            this.history = [];
+        }
+    }
+    
+    loadEventsFromStorage() {
+        try {
+            const savedEvents = localStorage.getItem('cuisync-events');
+            if (savedEvents) {
+                this.events = JSON.parse(savedEvents);
+            } else {
+                this.events = [];
+            }
+        } catch (error) {
+            console.error('Failed to load events from localStorage:', error);
+            this.events = [];
+        }
+    }
+    
+    loadClientPreferencesFromStorage() {
+        try {
+            const savedPreferences = localStorage.getItem('cuisync-client-preferences');
+            if (savedPreferences) {
+                this.clientPreferences = JSON.parse(savedPreferences);
+            } else {
+                this.clientPreferences = [];
+            }
+        } catch (error) {
+            console.error('Failed to load client preferences from localStorage:', error);
+            this.clientPreferences = [];
+        }
+    }
+    
+    loadRestaurantSettingsFromStorage() {
+        try {
+            const savedSettings = localStorage.getItem('cuisync-restaurant-settings');
+            if (savedSettings) {
+                this.restaurantSettings = { ...this.restaurantSettings, ...JSON.parse(savedSettings) };
+            }
+            // Populate form if elements exist
+            if (this.dom.restaurantNameInput) this.dom.restaurantNameInput.value = this.restaurantSettings.name || '';
+            if (this.dom.restaurantPhoneInput) this.dom.restaurantPhoneInput.value = this.restaurantSettings.phone || '';
+            if (this.dom.restaurantEmailInput) this.dom.restaurantEmailInput.value = this.restaurantSettings.email || '';
+            if (this.dom.restaurantAddressInput) this.dom.restaurantAddressInput.value = this.restaurantSettings.address || '';
+        } catch (error) {
+            console.error('Failed to load restaurant settings from localStorage:', error);
+        }
+    }
+    
+    initializeDefaultTables() {
+        this.tables = [];
+        for (let i = 1; i <= this.maxTables; i++) {
+            this.tables.push({
+                id: i,
+                number: i,
+                status: 'free', // free, occupied, reserved, cleaning
+                capacity: 4,
+                notes: ''
+            });
         }
     }
 
@@ -355,10 +710,14 @@ class CuisyncApp {
         if (!this.validateForm()) return;
         
         const tableNum = parseInt(this.dom.tableInput.value);
+        const covers = this.dom.coversInput ? parseInt(this.dom.coversInput.value) || null : null;
+        const clientName = this.dom.clientNameInput ? this.dom.clientNameInput.value.trim() : null;
+        const tableNotes = this.dom.tableNotesInput ? this.dom.tableNotesInput.value.trim() : null;
         let dish = this.dom.dishInput.value.trim();
         const qty = parseInt(this.dom.qtyInput.value);
         const course = this.dom.courseInput.value;
         const note = this.dom.noteInput.value.trim();
+        const hasAllergens = this.dom.itemAllergenCheck ? this.dom.itemAllergenCheck.checked : false;
         const selectedCategory = this.getSelectedCategory();
         const selectedDish = this.getSelectedDish();
         const price = this.dom.priceInput && this.dom.priceInput.value !== '' ? parseFloat(this.dom.priceInput.value) : (selectedDish ? selectedDish.price : null);
@@ -368,7 +727,12 @@ class CuisyncApp {
         
         this.addItemToPad(tableNum, dish, qty, course, note, {
             categoryName: selectedCategory ? selectedCategory.name : null,
-            price: price !== null && !isNaN(price) ? price : null
+            price: price !== null && !isNaN(price) ? price : null,
+            hasAllergens: hasAllergens
+        }, {
+            covers: covers,
+            clientName: clientName,
+            tableNotes: tableNotes
         });
         this.recalculateTotal();
         this.clearForm();
@@ -407,12 +771,13 @@ class CuisyncApp {
         this.dom.courseInput.value = 'plat';
         this.dom.noteInput.value = '';
         if (this.dom.priceInput) this.dom.priceInput.value = '';
+        if (this.dom.itemAllergenCheck) this.dom.itemAllergenCheck.checked = false;
         
-        // Keep table number for convenience
+        // Keep table number, covers, client name, and table notes for convenience
         // this.dom.tableInput.value = '';
     }
     
-    addItemToPad(tableNum, dish, qty, course, note, extra = {}) {
+    addItemToPad(tableNum, dish, qty, course, note, extra = {}, tableInfo = {}) {
         let pad = this.pads.find(p => p.table === tableNum && p.status === 'open');
         
         if (!pad) {
@@ -421,10 +786,20 @@ class CuisyncApp {
                 table: tableNum,
                 status: 'open',
                 items: [],
+                covers: tableInfo.covers || null,
+                clientName: tableInfo.clientName || null,
+                tableNotes: tableInfo.tableNotes || null,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
             this.pads.push(pad);
+            // Mettre à jour le statut de la table
+            this.updateTableStatus(tableNum, 'occupied');
+        } else {
+            // Mettre à jour les infos de table si fournies
+            if (tableInfo.covers !== undefined) pad.covers = tableInfo.covers;
+            if (tableInfo.clientName !== undefined) pad.clientName = tableInfo.clientName;
+            if (tableInfo.tableNotes !== undefined) pad.tableNotes = tableInfo.tableNotes;
         }
         
         const item = {
@@ -435,6 +810,7 @@ class CuisyncApp {
             note: note || null,
             price: typeof extra.price === 'number' ? extra.price : null,
             category: extra.categoryName || null,
+            hasAllergens: extra.hasAllergens || false,
             createdAt: new Date().toISOString()
         };
         
@@ -443,6 +819,7 @@ class CuisyncApp {
         
         this.saveToStorage();
         this.renderViews();
+        this.renderTablesGrid();
         this.updateSendAllButton();
         
         this.showToast(`${dish} ajouté à la table ${tableNum}`, 'success');
@@ -473,7 +850,7 @@ class CuisyncApp {
         this.showToast('Catégorie ajoutée', 'success');
     }
 
-    addDish(categoryId, name, price) {
+    addDish(categoryId, name, price, extra = {}) {
         const category = this.menu.categories.find(c => c.id === categoryId);
         if (!category) return;
         const exists = category.dishes.some(d => d.name.toLowerCase() === name.toLowerCase());
@@ -481,7 +858,15 @@ class CuisyncApp {
             this.showToast('Plat existe déjà dans cette catégorie', 'info');
             return;
         }
-        category.dishes.push({ id: this.generateId(), name, price });
+        const dish = {
+            id: this.generateId(),
+            name,
+            price,
+            availability: extra.availability || 'available',
+            allergens: extra.allergens || '',
+            description: extra.description || ''
+        };
+        category.dishes.push(dish);
         this.saveMenuToStorage();
         this.refreshDishOptions();
         this.renderMenuList();
@@ -609,7 +994,8 @@ class CuisyncApp {
                 category.dishes.forEach(dish => {
                     const opt = document.createElement('option');
                     opt.value = dish.id;
-                    opt.textContent = dish.name;
+                    opt.textContent = dish.availability === 'unavailable' ? `${dish.name} (Indisponible)` : dish.name;
+                    opt.disabled = dish.availability === 'unavailable';
                     dishSelect.appendChild(opt);
                 });
             }
@@ -705,27 +1091,6 @@ class CuisyncApp {
        this.showUndoNotification('Commande marquée prête');
    }
    
-   markPadServed(padId) {
-       const padIndex = this.pads.findIndex(p => p.id === padId);
-       if (padIndex === -1) return;
-       
-       const pad = this.pads[padIndex];
-       const oldState = { ...pad, _index: padIndex };
-       
-       this.pads.splice(padIndex, 1);
-       
-       this.undoStack.push({
-           type: 'markServed',
-           data: oldState
-       });
-       
-       this.saveToStorage();
-       this.renderViews();
-       
-       this.showToast(`Table ${pad.table} servie`, 'success');
-       this.showUndoNotification('Commande servie');
-   }
-   
    deletePad(padId) {
        const padIndex = this.pads.findIndex(p => p.id === padId);
        if (padIndex === -1) return;
@@ -817,8 +1182,9 @@ class CuisyncApp {
 		const html = categories.map(cat => {
             const dishes = cat.dishes || [];
             const chips = dishes.length ? dishes.map(d => `
-                <span class=\"menu-chip\">
-                    <span>${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} €</span>
+                <span class=\"menu-chip ${d.availability === 'unavailable' ? 'unavailable' : ''}\">
+                    <span>${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} € ${d.availability === 'unavailable' ? '(Indisponible)' : ''}</span>
+                    ${d.allergens ? `<span class=\"allergen-badge\" title=\"Allergènes: ${this.escapeHTML(d.allergens)}\">⚠️</span>` : ''}
                     <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"edit-dish\" data-category-id=\"${cat.id}\" data-dish-id=\"${d.id}\" title=\"Modifier le plat\">✎</button>
                     <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"delete-dish\" data-category-id=\"${cat.id}\" data-dish-id=\"${d.id}\" title=\"Supprimer le plat\">✕</button>
                 </span>
@@ -978,7 +1344,7 @@ class CuisyncApp {
        const itemsHTML = pad.items.map(item => `
            <div class="pad-item">
                <div class="item-details">
-                   <h4>${this.escapeHTML(item.dish)}</h4>
+                   <h4>${this.escapeHTML(item.dish)} ${item.hasAllergens ? '⚠️' : ''}</h4>
                    <div class="item-meta">
                        <span>${item.course}</span>
                        ${item.category ? `<span>•</span><span>${this.escapeHTML(item.category)}</span>` : ''}
@@ -989,6 +1355,12 @@ class CuisyncApp {
                <div class="item-qty">${item.qty}</div>
            </div>
        `).join('');
+       
+       const padInfoHTML = `
+           ${pad.covers ? `<div class="pad-info">Couverts: ${pad.covers}</div>` : ''}
+           ${pad.clientName ? `<div class="pad-info">Client: ${this.escapeHTML(pad.clientName)}</div>` : ''}
+           ${pad.tableNotes ? `<div class="pad-info pad-notes">Notes: ${this.escapeHTML(pad.tableNotes)}</div>` : ''}
+       `;
        
        let actionsHTML = '';
       if (view === 'server') {
@@ -1041,6 +1413,7 @@ class CuisyncApp {
                   <h3>Table ${pad.table}</h3>
                   <span class="pad-status ${pad.status}">${statusText[pad.status]}</span>
               </div>
+              ${padInfoHTML}
               <div class="pad-items">
                   ${itemsHTML}
               </div>
@@ -1175,30 +1548,6 @@ class CuisyncApp {
         this.showToast('Export des ventes téléchargé', 'success');
     }
 
-    markPadPaid(padId) {
-        const padIndex = this.pads.findIndex(p => p.id === padId);
-        if (padIndex === -1) return;
-        const pad = this.pads[padIndex];
-        const oldState = { ...pad, _index: padIndex };
-        // Mark as served and store paid timestamp
-        this.pads.splice(padIndex, 1);
-        const servedPad = { ...pad, status: 'served', paidAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        // Insert back? Keeping behavior consistent with served removal
-        // For simplicity, keep removal like markPadServed
-
-        this.undoStack.push({
-            type: 'markPaid',
-            data: oldState
-        });
-        
-        // No need to keep servedPad in list (same as markPadServed)
-        this.saveToStorage();
-        this.renderViews();
-        this.updateSendAllButton();
-        
-        this.showToast(`Table ${pad.table} encaissée`, 'success');
-        this.showUndoNotification('Paiement enregistré');
-    }
 
     openPaymentPanel(padId) {
         this.currentPaymentPadId = padId;
@@ -1423,6 +1772,837 @@ class CuisyncApp {
            hour: '2-digit',
            minute: '2-digit'
        });
+   }
+   
+   // Tables Management
+   updateTableStatus(tableNum, status) {
+       const table = this.tables.find(t => t.number === tableNum);
+       if (table) {
+           table.status = status;
+           this.saveToStorage();
+           this.renderTablesGrid();
+       }
+   }
+   
+   addTable() {
+       const newTableNum = this.tables.length > 0 ? Math.max(...this.tables.map(t => t.number)) + 1 : 1;
+       this.tables.push({
+           id: this.generateId(),
+           number: newTableNum,
+           status: 'free',
+           capacity: 4,
+           notes: ''
+       });
+       this.saveToStorage();
+       this.renderTablesGrid();
+       this.showToast(`Table ${newTableNum} ajoutée`, 'success');
+   }
+   
+   saveTablesConfig() {
+       if (this.dom.maxTablesInput && this.dom.maxTablesInput.value) {
+           const max = parseInt(this.dom.maxTablesInput.value);
+           if (max > 0 && max <= 200) {
+               this.maxTables = max;
+               // Ajuster les tables si nécessaire
+               while (this.tables.length < max) {
+                   this.addTable();
+               }
+               while (this.tables.length > max) {
+                   this.tables.pop();
+               }
+               this.saveToStorage();
+               this.renderTablesGrid();
+               this.showToast('Configuration enregistrée', 'success');
+           }
+       }
+   }
+   
+   renderTablesGrid() {
+       if (!this.dom.tablesGrid) return;
+       const html = this.tables.map(table => {
+           const pad = this.pads.find(p => p.table === table.number && p.status !== 'served');
+           const statusClass = `table-status-${table.status}`;
+           const statusText = {
+               'free': 'Libre',
+               'occupied': 'Occupée',
+               'reserved': 'Réservée',
+               'cleaning': 'Nettoyage'
+           };
+           return `
+               <div class="table-card ${statusClass}" data-table-num="${table.number}">
+                   <div class="table-header">
+                       <h4>Table ${table.number}</h4>
+                       <span class="table-status-badge ${table.status}">${statusText[table.status] || table.status}</span>
+                   </div>
+                   <div class="table-info">
+                       <div>Capacité: ${table.capacity}</div>
+                       ${pad ? `<div>Client: ${pad.clientName || '—'}</div>` : ''}
+                       ${pad && pad.covers ? `<div>Couverts: ${pad.covers}</div>` : ''}
+                       ${table.notes ? `<div class="table-notes">${this.escapeHTML(table.notes)}</div>` : ''}
+                   </div>
+                   <div class="table-actions">
+                       <button class="btn btn-sm btn-secondary" onclick="window.cuisyncApp.editTable(${table.number})">Modifier</button>
+                       <select class="table-status-select" onchange="window.cuisyncApp.changeTableStatus(${table.number}, this.value)">
+                           <option value="free" ${table.status === 'free' ? 'selected' : ''}>Libre</option>
+                           <option value="occupied" ${table.status === 'occupied' ? 'selected' : ''}>Occupée</option>
+                           <option value="reserved" ${table.status === 'reserved' ? 'selected' : ''}>Réservée</option>
+                           <option value="cleaning" ${table.status === 'cleaning' ? 'selected' : ''}>Nettoyage</option>
+                       </select>
+                   </div>
+               </div>
+           `;
+       }).join('');
+       this.dom.tablesGrid.innerHTML = html || '<div class="empty-state"><p>Aucune table configurée</p></div>';
+   }
+   
+   editTable(tableNum) {
+       const table = this.tables.find(t => t.number === tableNum);
+       if (!table) return;
+       const capacity = prompt('Capacité de la table:', table.capacity);
+       if (capacity && !isNaN(capacity) && parseInt(capacity) > 0) {
+           table.capacity = parseInt(capacity);
+       }
+       const notes = prompt('Notes sur la table:', table.notes);
+       if (notes !== null) {
+           table.notes = notes;
+       }
+       this.saveToStorage();
+       this.renderTablesGrid();
+   }
+   
+   changeTableStatus(tableNum, status) {
+       this.updateTableStatus(tableNum, status);
+   }
+   
+   // Reservations Management
+   addReservation() {
+       if (!this.dom.reservationForm) return;
+       const name = this.dom.reservationNameInput.value.trim();
+       const covers = parseInt(this.dom.reservationCoversInput.value);
+       const date = this.dom.reservationDateInput.value;
+       const time = this.dom.reservationTimeInput ? this.dom.reservationTimeInput.value : '19:00';
+       const tableNum = this.dom.reservationTableSelect.value ? parseInt(this.dom.reservationTableSelect.value) : null;
+       const phone = this.dom.reservationPhoneInput.value.trim();
+       const email = this.dom.reservationEmailInput ? this.dom.reservationEmailInput.value.trim() : null;
+       const occasion = this.dom.reservationOccasionSelect ? this.dom.reservationOccasionSelect.value : null;
+       const notes = this.dom.reservationNotesInput.value.trim();
+       
+       if (!name || !covers || !date || !time) {
+           this.showToast('Veuillez remplir tous les champs obligatoires', 'error');
+           return;
+       }
+       
+       const datetime = `${date}T${time}`;
+       
+       const reservation = {
+           id: this.generateId(),
+           name,
+           covers,
+           date: datetime,
+           tableNum,
+           phone: phone || null,
+           email: email || null,
+           occasion: occasion || null,
+           notes: notes || null,
+           status: 'pending', // pending, confirmed, cancelled, completed
+           createdAt: new Date().toISOString()
+       };
+       
+       this.reservations.push(reservation);
+       
+       // Save client preferences if email or phone provided
+       if (email || phone) {
+           this.updateClientPreferences(name, phone, email, notes);
+       }
+       
+       if (tableNum) {
+           this.updateTableStatus(tableNum, 'reserved');
+       }
+       this.saveToStorage();
+       this.renderReservations();
+       this.renderReservationCalendar();
+       this.renderTablesGrid();
+       this.refreshReservationTableSelect();
+       this.dom.reservationForm.reset();
+       this.showToast('Réservation ajoutée', 'success');
+   }
+   
+   renderReservations() {
+       if (!this.dom.reservationsList) return;
+       const now = new Date();
+       const html = this.reservations
+           .filter(r => new Date(r.date) >= now || r.status === 'pending')
+           .sort((a, b) => new Date(a.date) - new Date(b.date))
+           .map(reservation => {
+               const statusText = {
+                   'pending': 'En attente',
+                   'confirmed': 'Confirmée',
+                   'cancelled': 'Annulée',
+                   'completed': 'Terminée'
+               };
+               const occasionText = {
+                   'anniversary': 'Anniversaire',
+                   'birthday': 'Fête d\'anniversaire',
+                   'business': 'Dîner d\'affaires',
+                   'romantic': 'Romantique',
+                   'other': 'Autre'
+               };
+               return `
+                   <div class="reservation-card">
+                       <div class="reservation-header">
+                           <h4>${this.escapeHTML(reservation.name)}</h4>
+                           <span class="reservation-status ${reservation.status}">${statusText[reservation.status] || reservation.status}</span>
+                       </div>
+                       <div class="reservation-info">
+                           <div>📅 ${this.formatDate(reservation.date)}</div>
+                           <div>👥 ${reservation.covers} couverts</div>
+                           ${reservation.tableNum ? `<div>🪑 Table: ${reservation.tableNum}</div>` : ''}
+                           ${reservation.phone ? `<div>📞 ${reservation.phone}</div>` : ''}
+                           ${reservation.email ? `<div>✉️ ${this.escapeHTML(reservation.email)}</div>` : ''}
+                           ${reservation.occasion ? `<div>🎉 ${occasionText[reservation.occasion] || reservation.occasion}</div>` : ''}
+                           ${reservation.notes ? `<div class="reservation-notes">📝 ${this.escapeHTML(reservation.notes)}</div>` : ''}
+                       </div>
+                       <div class="reservation-actions">
+                           <button class="btn btn-sm btn-primary" onclick="window.cuisyncApp.confirmReservation('${reservation.id}')">Confirmer</button>
+                           <button class="btn btn-sm btn-secondary" onclick="window.cuisyncApp.editReservation('${reservation.id}')">Modifier</button>
+                           <button class="btn btn-sm btn-danger" onclick="window.cuisyncApp.cancelReservation('${reservation.id}')">Annuler</button>
+                       </div>
+                   </div>
+               `;
+           }).join('');
+       this.dom.reservationsList.innerHTML = html || '<div class="empty-state"><p>Aucune réservation</p></div>';
+   }
+   
+   confirmReservation(reservationId) {
+       const reservation = this.reservations.find(r => r.id === reservationId);
+       if (reservation) {
+           reservation.status = 'confirmed';
+           if (reservation.tableNum) {
+               this.updateTableStatus(reservation.tableNum, 'reserved');
+           }
+           this.saveToStorage();
+           this.renderReservations();
+           this.renderTablesGrid();
+           this.showToast('Réservation confirmée', 'success');
+       }
+   }
+   
+   cancelReservation(reservationId) {
+       const reservation = this.reservations.find(r => r.id === reservationId);
+       if (reservation && confirm('Annuler cette réservation ?')) {
+           reservation.status = 'cancelled';
+           if (reservation.tableNum) {
+               this.updateTableStatus(reservation.tableNum, 'free');
+           }
+           this.saveToStorage();
+           this.renderReservations();
+           this.renderTablesGrid();
+           this.showToast('Réservation annulée', 'info');
+       }
+   }
+   
+   editReservation(reservationId) {
+       const reservation = this.reservations.find(r => r.id === reservationId);
+       if (!reservation) return;
+       // Simple edit - could be improved with a modal
+       const newName = prompt('Nom:', reservation.name);
+       if (newName) reservation.name = newName;
+       this.saveToStorage();
+       this.renderReservations();
+   }
+   
+   refreshReservationTableSelect() {
+       if (!this.dom.reservationTableSelect) return;
+       const current = this.dom.reservationTableSelect.value;
+       this.dom.reservationTableSelect.innerHTML = '<option value="">Table (optionnel)</option>';
+       this.tables.forEach(table => {
+           const opt = document.createElement('option');
+           opt.value = table.number;
+           opt.textContent = `Table ${table.number}`;
+           this.dom.reservationTableSelect.appendChild(opt);
+       });
+       if (current) this.dom.reservationTableSelect.value = current;
+   }
+   
+   // Statistics
+   updateStatistics() {
+       if (!this.dom.statRevenue) return;
+       const period = this.dom.statsPeriodSelect ? this.dom.statsPeriodSelect.value : 'today';
+       const now = new Date();
+       let startDate;
+       
+       switch (period) {
+           case 'today':
+               startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+               break;
+           case 'week':
+               startDate = new Date(now);
+               startDate.setDate(now.getDate() - 7);
+               break;
+           case 'month':
+               startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+               break;
+           default:
+               startDate = new Date(0);
+       }
+       
+       const filteredSales = this.sales.filter(s => new Date(s.createdAt) >= startDate);
+       const revenue = filteredSales.reduce((sum, s) => sum + (s.total || 0), 0);
+       const orders = filteredSales.length;
+       const tables = new Set(filteredSales.map(s => s.table)).size;
+       const average = orders > 0 ? revenue / orders : 0;
+       
+       this.dom.statRevenue.textContent = `${revenue.toFixed(2)} €`;
+       this.dom.statOrders.textContent = orders;
+       this.dom.statTables.textContent = tables;
+       this.dom.statAverage.textContent = `${average.toFixed(2)} €`;
+       
+       // Top dishes
+       const dishCounts = {};
+       this.history.forEach(h => {
+           if (h.items && Array.isArray(h.items)) {
+               h.items.forEach(item => {
+                   if (new Date(h.createdAt) >= startDate) {
+                       dishCounts[item.dish] = (dishCounts[item.dish] || 0) + (item.qty || 0);
+                   }
+               });
+           }
+       });
+       
+       const topDishes = Object.entries(dishCounts)
+           .sort((a, b) => b[1] - a[1])
+           .slice(0, 10);
+       
+       if (this.dom.topDishesList) {
+           if (topDishes.length === 0) {
+               this.dom.topDishesList.innerHTML = '<div class="empty-state"><p>Aucune donnée</p></div>';
+           } else {
+               this.dom.topDishesList.innerHTML = topDishes.map(([dish, count]) => `
+                   <div class="top-dish-item">
+                       <span>${this.escapeHTML(dish)}</span>
+                       <strong>${count}</strong>
+                   </div>
+               `).join('');
+           }
+       }
+   }
+   
+   // History
+   renderHistory() {
+       if (!this.dom.historyList) return;
+       const filter = this.dom.historyFilterSelect ? this.dom.historyFilterSelect.value : 'all';
+       const search = this.dom.historySearchInput ? this.dom.historySearchInput.value.toLowerCase() : '';
+       
+       const now = new Date();
+       let startDate;
+       switch (filter) {
+           case 'today':
+               startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+               break;
+           case 'week':
+               startDate = new Date(now);
+               startDate.setDate(now.getDate() - 7);
+               break;
+           case 'month':
+               startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+               break;
+           default:
+               startDate = new Date(0);
+       }
+       
+       let filtered = this.history.filter(h => new Date(h.createdAt) >= startDate);
+       if (search) {
+           filtered = filtered.filter(h => 
+               String(h.table).includes(search) ||
+               (h.clientName && h.clientName.toLowerCase().includes(search))
+           );
+       }
+       
+       const html = filtered.map(entry => {
+           const total = this.getPadTotal(entry);
+           return `
+               <div class="history-card">
+                   <div class="history-header">
+                       <h4>Table ${entry.table}</h4>
+                       <span>${this.formatDate(entry.createdAt)}</span>
+                   </div>
+                   ${entry.clientName ? `<div>Client: ${this.escapeHTML(entry.clientName)}</div>` : ''}
+                   <div class="history-items">
+                       ${(entry.items || []).map(item => `
+                           <div class="history-item">
+                               ${item.qty}x ${this.escapeHTML(item.dish)} - ${item.price ? (item.price * item.qty).toFixed(2) + ' €' : '—'}
+                           </div>
+                       `).join('')}
+                   </div>
+                   <div class="history-total">Total: <strong>${total.toFixed(2)} €</strong></div>
+               </div>
+           `;
+       }).join('');
+       this.dom.historyList.innerHTML = html || '<div class="empty-state"><p>Aucun historique</p></div>';
+   }
+   
+   // Host view toggle
+   toggleHostView(view) {
+       const tablesMgmt = document.getElementById('tables-management');
+       const reservationsMgmt = document.getElementById('reservations-management');
+       const statisticsView = this.dom.statisticsView;
+       const historySection = this.dom.historySection;
+       
+       // Hide all
+       if (tablesMgmt) tablesMgmt.classList.add('hidden');
+       if (reservationsMgmt) reservationsMgmt.classList.add('hidden');
+       if (statisticsView) statisticsView.classList.add('hidden');
+       if (historySection) historySection.classList.add('hidden');
+       
+       // Show selected
+       switch (view) {
+           case 'tables':
+               if (tablesMgmt) tablesMgmt.classList.remove('hidden');
+               break;
+           case 'reservations':
+               if (reservationsMgmt) reservationsMgmt.classList.remove('hidden');
+               break;
+           case 'stats':
+               if (statisticsView) {
+                   statisticsView.classList.remove('hidden');
+                   this.updateStatistics();
+               }
+               break;
+       }
+   }
+   
+   // Update markPadServed to save to history
+   markPadServed(padId) {
+       const padIndex = this.pads.findIndex(p => p.id === padId);
+       if (padIndex === -1) return;
+       
+       const pad = this.pads[padIndex];
+       const oldState = { ...pad, _index: padIndex };
+       
+       // Save to history before removing
+       this.history.push({
+           ...pad,
+           status: 'served',
+           servedAt: new Date().toISOString()
+       });
+       
+       this.pads.splice(padIndex, 1);
+       
+       // Update table status
+       this.updateTableStatus(pad.table, 'free');
+       
+       this.undoStack.push({
+           type: 'markServed',
+           data: oldState
+       });
+       
+       this.saveToStorage();
+       this.renderViews();
+       this.renderTablesGrid();
+       this.renderHistory();
+       
+       this.showToast(`Table ${pad.table} servie`, 'success');
+       this.showUndoNotification('Commande servie');
+   }
+   
+   // Update markPadPaid to save to history
+   markPadPaid(padId) {
+       const padIndex = this.pads.findIndex(p => p.id === padId);
+       if (padIndex === -1) return;
+       const pad = this.pads[padIndex];
+       const oldState = { ...pad, _index: padIndex };
+       
+       // Save to history before removing
+       this.history.push({
+           ...pad,
+           status: 'served',
+           paidAt: new Date().toISOString(),
+           updatedAt: new Date().toISOString()
+       });
+       
+       this.pads.splice(padIndex, 1);
+       
+       // Update table status
+       this.updateTableStatus(pad.table, 'free');
+       
+       this.undoStack.push({
+           type: 'markPaid',
+           data: oldState
+       });
+       
+       this.saveToStorage();
+       this.renderViews();
+       this.renderTablesGrid();
+       this.renderHistory();
+       
+       this.showToast(`Table ${pad.table} encaissée`, 'success');
+       this.showUndoNotification('Paiement enregistré');
+   }
+   
+   // Update confirmPayment to handle split payment
+   confirmPayment() {
+       if (!this.currentPaymentPadId) return;
+       const padId = this.currentPaymentPadId;
+       const method = this.dom.paymentMethod ? this.dom.paymentMethod.value : 'other';
+       const pad = this.pads.find(p => p.id === padId);
+       const subtotal = this.getPadTotal(pad);
+       const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+       const discount = parseFloat(this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0') || 0;
+       const tip = parseFloat(this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0') || 0;
+       let total = Math.max(0, subtotal - discount) + (subtotal * taxRate / 100) + tip;
+       
+       // Handle split payment
+       if (method === 'split' && this.dom.splitAmount && this.dom.splitAmount.value) {
+           const splitAmount = parseFloat(this.dom.splitAmount.value);
+           if (!isNaN(splitAmount) && splitAmount > 0 && splitAmount <= total) {
+               total = splitAmount;
+           } else {
+               this.showToast('Montant de paiement partagé invalide', 'error');
+               return;
+           }
+       }
+       
+       if (method === 'cash') {
+           const received = parseFloat(this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0');
+           if (isNaN(received) || received < total) {
+               this.showToast('Montant reçu insuffisant', 'error');
+               return;
+           }
+       }
+       
+       // Record sale
+       this.recordSale({
+           padId,
+           table: pad.table,
+           subtotal,
+           discount,
+           tax: subtotal * taxRate / 100,
+           tip,
+           total,
+           method,
+           createdAt: new Date().toISOString()
+       });
+       
+       this.closePaymentPanel();
+       this.markPadPaid(padId);
+       if (this.posSettings && this.posSettings.printAfterPay) {
+           this.printPadReceipt(padId);
+       }
+   }
+   
+   // Reservation Calendar
+   renderReservationCalendar() {
+       if (!this.dom.reservationCalendar || !this.dom.currentDateDisplay) return;
+       
+       const date = this.currentReservationDate;
+       const dateStr = date.toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+       this.dom.currentDateDisplay.textContent = dateStr;
+       
+       // Get reservations for this day
+       const dayStart = new Date(date);
+       dayStart.setHours(0, 0, 0, 0);
+       const dayEnd = new Date(date);
+       dayEnd.setHours(23, 59, 59, 999);
+       
+       const dayReservations = this.reservations.filter(r => {
+           const resDate = new Date(r.date);
+           return resDate >= dayStart && resDate <= dayEnd;
+       }).sort((a, b) => new Date(a.date) - new Date(b.date));
+       
+       // Create hourly slots
+       const hours = [];
+       for (let h = 8; h <= 23; h++) {
+           hours.push(h);
+       }
+       
+       const html = hours.map(hour => {
+           const hourReservations = dayReservations.filter(r => {
+               const resDate = new Date(r.date);
+               return resDate.getHours() === hour;
+           });
+           
+           return `
+               <div class="calendar-hour-slot">
+                   <div class="calendar-hour">${hour.toString().padStart(2, '0')}:00</div>
+                   <div class="calendar-reservations">
+                       ${hourReservations.map(r => `
+                           <div class="calendar-reservation ${r.status}" title="${this.escapeHTML(r.name)} - ${r.covers} couverts">
+                               <span class="reservation-time">${new Date(r.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                               <span class="reservation-name">${this.escapeHTML(r.name)}</span>
+                               <span class="reservation-covers">${r.covers} pers.</span>
+                           </div>
+                       `).join('')}
+                   </div>
+               </div>
+           `;
+       }).join('');
+       
+       this.dom.reservationCalendar.innerHTML = html || '<div class="empty-state"><p>Aucune réservation ce jour</p></div>';
+   }
+   
+   // Floor Plan
+   renderFloorPlan() {
+       if (!this.dom.floorPlan) return;
+       
+       // Simple grid layout for floor plan
+       const cols = Math.ceil(Math.sqrt(this.tables.length));
+       const rows = Math.ceil(this.tables.length / cols);
+       
+       const html = `
+           <div class="floor-plan-grid" style="grid-template-columns: repeat(${cols}, 1fr); grid-template-rows: repeat(${rows}, 1fr);">
+               ${this.tables.map(table => {
+                   const pad = this.pads.find(p => p.table === table.number && p.status !== 'served');
+                   const reservation = this.reservations.find(r => r.tableNum === table.number && r.status !== 'cancelled' && new Date(r.date) >= new Date());
+                   
+                   return `
+                       <div class="floor-plan-table ${table.status}" 
+                            data-table-num="${table.number}"
+                            onclick="window.cuisyncApp.editTable(${table.number})"
+                            title="Table ${table.number} - ${table.status}">
+                           <div class="floor-plan-table-number">${table.number}</div>
+                           ${pad ? `<div class="floor-plan-table-info">${pad.covers || ''} pers.</div>` : ''}
+                           ${reservation ? `<div class="floor-plan-table-reservation">Réservé</div>` : ''}
+                       </div>
+                   `;
+               }).join('')}
+           </div>
+       `;
+       
+       this.dom.floorPlan.innerHTML = html;
+   }
+   
+   // Restaurant Settings
+   saveRestaurantSettings() {
+       if (!this.dom.restaurantNameInput) return;
+       
+       this.restaurantSettings.name = this.dom.restaurantNameInput.value.trim();
+       this.restaurantSettings.phone = this.dom.restaurantPhoneInput ? this.dom.restaurantPhoneInput.value.trim() : '';
+       this.restaurantSettings.email = this.dom.restaurantEmailInput ? this.dom.restaurantEmailInput.value.trim() : '';
+       this.restaurantSettings.address = this.dom.restaurantAddressInput ? this.dom.restaurantAddressInput.value.trim() : '';
+       
+       // Save opening hours from form
+       const dayInputs = this.dom.openingHoursContainer.querySelectorAll('[data-day]');
+       dayInputs.forEach(input => {
+           const day = input.dataset.day;
+           const type = input.dataset.type; // 'open', 'close', 'evening-open', 'evening-close'
+           
+           if (day && this.restaurantSettings.openingHours[day]) {
+               if (type === 'open' || type === 'close') {
+                   this.restaurantSettings.openingHours[day][type] = input.value;
+               } else if (type === 'evening-open' || type === 'evening-close') {
+                   if (!this.restaurantSettings.openingHours[day].evening) {
+                       this.restaurantSettings.openingHours[day].evening = {};
+                   }
+                   this.restaurantSettings.openingHours[day].evening[type.replace('evening-', '')] = input.value;
+               }
+           }
+       });
+       
+       this.saveToStorage();
+       this.showToast('Paramètres enregistrés', 'success');
+   }
+   
+   renderOpeningHours() {
+       if (!this.dom.openingHoursContainer) return;
+       
+       const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+       const dayNames = {
+           monday: 'Lundi',
+           tuesday: 'Mardi',
+           wednesday: 'Mercredi',
+           thursday: 'Jeudi',
+           friday: 'Vendredi',
+           saturday: 'Samedi',
+           sunday: 'Dimanche'
+       };
+       
+       const html = days.map(day => {
+           const hours = this.restaurantSettings.openingHours[day] || {};
+           return `
+               <div class="opening-hours-day">
+                   <label>${dayNames[day]}</label>
+                   <div class="opening-hours-inputs">
+                       <input type="time" data-day="${day}" data-type="open" value="${hours.open || '12:00'}" placeholder="Ouverture">
+                       <span>-</span>
+                       <input type="time" data-day="${day}" data-type="close" value="${hours.close || '14:00'}" placeholder="Fermeture">
+                       <span>|</span>
+                       <input type="time" data-day="${day}" data-type="evening-open" value="${hours.evening?.open || '19:00'}" placeholder="Soir">
+                       <span>-</span>
+                       <input type="time" data-day="${day}" data-type="evening-close" value="${hours.evening?.close || '22:00'}" placeholder="Fermeture">
+                   </div>
+               </div>
+           `;
+       }).join('');
+       
+       this.dom.openingHoursContainer.innerHTML = html;
+   }
+   
+   // Events Management
+   addEvent() {
+       if (!this.dom.eventForm) return;
+       const name = this.dom.eventNameInput.value.trim();
+       const date = this.dom.eventDateInput.value;
+       const time = this.dom.eventTimeInput ? this.dom.eventTimeInput.value : '';
+       const description = this.dom.eventDescriptionInput ? this.dom.eventDescriptionInput.value.trim() : '';
+       const capacity = this.dom.eventCapacityInput ? parseInt(this.dom.eventCapacityInput.value) : null;
+       
+       if (!name || !date) {
+           this.showToast('Veuillez remplir tous les champs obligatoires', 'error');
+           return;
+       }
+       
+       const event = {
+           id: this.generateId(),
+           name,
+           date: time ? `${date}T${time}` : date,
+           description: description || null,
+           capacity: capacity || null,
+           createdAt: new Date().toISOString()
+       };
+       
+       this.events.push(event);
+       this.saveToStorage();
+       this.renderEvents();
+       this.dom.eventForm.reset();
+       this.showToast('Événement ajouté', 'success');
+   }
+   
+   renderEvents() {
+       if (!this.dom.eventsList) return;
+       const now = new Date();
+       
+       const html = this.events
+           .filter(e => new Date(e.date) >= now)
+           .sort((a, b) => new Date(a.date) - new Date(b.date))
+           .map(event => {
+               return `
+                   <div class="event-card">
+                       <div class="event-header">
+                           <h4>${this.escapeHTML(event.name)}</h4>
+                           <span class="event-date">${this.formatDate(event.date)}</span>
+                       </div>
+                       ${event.description ? `<div class="event-description">${this.escapeHTML(event.description)}</div>` : ''}
+                       ${event.capacity ? `<div class="event-capacity">Capacité: ${event.capacity} personnes</div>` : ''}
+                       <div class="event-actions">
+                           <button class="btn btn-sm btn-danger" onclick="window.cuisyncApp.deleteEvent('${event.id}')">Supprimer</button>
+                       </div>
+                   </div>
+               `;
+           }).join('');
+       
+       this.dom.eventsList.innerHTML = html || '<div class="empty-state"><p>Aucun événement à venir</p></div>';
+   }
+   
+   deleteEvent(eventId) {
+       if (confirm('Supprimer cet événement ?')) {
+           this.events = this.events.filter(e => e.id !== eventId);
+           this.saveToStorage();
+           this.renderEvents();
+           this.showToast('Événement supprimé', 'info');
+       }
+   }
+   
+   // Client Preferences
+   updateClientPreferences(name, phone, email, notes) {
+       if (!name) return;
+       
+       // Find existing client or create new
+       let client = this.clientPreferences.find(c => 
+           (phone && c.phone === phone) || (email && c.email === email)
+       );
+       
+       if (!client) {
+           client = {
+               id: this.generateId(),
+               name,
+               phone: phone || null,
+               email: email || null,
+               preferences: [],
+               notes: notes || null,
+               visitCount: 0,
+               lastVisit: null,
+               createdAt: new Date().toISOString()
+           };
+           this.clientPreferences.push(client);
+       } else {
+           // Update existing client
+           if (name) client.name = name;
+           if (phone) client.phone = phone;
+           if (email) client.email = email;
+           if (notes) client.notes = notes;
+       }
+       
+       client.visitCount = (client.visitCount || 0) + 1;
+       client.lastVisit = new Date().toISOString();
+       
+       this.saveToStorage();
+   }
+   
+   renderClientPreferences() {
+       if (!this.dom.clientPreferencesList) return;
+       
+       const search = this.dom.clientSearchInput ? this.dom.clientSearchInput.value.toLowerCase() : '';
+       
+       let filtered = this.clientPreferences;
+       if (search) {
+           filtered = this.clientPreferences.filter(c => 
+               c.name.toLowerCase().includes(search) ||
+               (c.phone && c.phone.includes(search)) ||
+               (c.email && c.email.toLowerCase().includes(search))
+           );
+       }
+       
+       const html = filtered.map(client => {
+           return `
+               <div class="client-preference-card">
+                   <div class="client-header">
+                       <h4>${this.escapeHTML(client.name)}</h4>
+                       <span class="client-visit-count">${client.visitCount || 0} visite(s)</span>
+                   </div>
+                   <div class="client-info">
+                       ${client.phone ? `<div>📞 ${this.escapeHTML(client.phone)}</div>` : ''}
+                       ${client.email ? `<div>✉️ ${this.escapeHTML(client.email)}</div>` : ''}
+                       ${client.notes ? `<div class="client-notes">Notes: ${this.escapeHTML(client.notes)}</div>` : ''}
+                       ${client.lastVisit ? `<div class="client-last-visit">Dernière visite: ${this.formatDate(client.lastVisit)}</div>` : ''}
+                   </div>
+                   <div class="client-actions">
+                       <button class="btn btn-sm btn-secondary" onclick="window.cuisyncApp.editClientPreference('${client.id}')">Modifier</button>
+                       <button class="btn btn-sm btn-primary" onclick="window.cuisyncApp.useClientPreference('${client.id}')">Utiliser pour réservation</button>
+                   </div>
+               </div>
+           `;
+       }).join('');
+       
+       this.dom.clientPreferencesList.innerHTML = html || '<div class="empty-state"><p>Aucun client trouvé</p></div>';
+   }
+   
+   editClientPreference(clientId) {
+       const client = this.clientPreferences.find(c => c.id === clientId);
+       if (!client) return;
+       
+       const newName = prompt('Nom:', client.name);
+       if (newName) client.name = newName;
+       
+       const newNotes = prompt('Notes:', client.notes || '');
+       if (newNotes !== null) client.notes = newNotes;
+       
+       this.saveToStorage();
+       this.renderClientPreferences();
+   }
+   
+   useClientPreference(clientId) {
+       const client = this.clientPreferences.find(c => c.id === clientId);
+       if (!client) return;
+       
+       // Fill reservation form with client data
+       if (this.dom.reservationNameInput) this.dom.reservationNameInput.value = client.name;
+       if (this.dom.reservationPhoneInput) this.dom.reservationPhoneInput.value = client.phone || '';
+       if (this.dom.reservationEmailInput) this.dom.reservationEmailInput.value = client.email || '';
+       if (this.dom.reservationNotesInput) this.dom.reservationNotesInput.value = client.notes || '';
+       
+       // Switch to reservations view
+       this.toggleHostView('reservations');
+       this.showToast(`Informations de ${client.name} chargées`, 'success');
    }
 }
 

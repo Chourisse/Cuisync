@@ -50,8 +50,19 @@
                     <form id="order-form" class="order-form">
                         <div class="form-group">
                             <label for="table-input">Table *</label>
-                            <input type="number" id="table-input" min="1" max="99" required aria-describedby="table-error">
+                            <div class="form-row">
+                                <input type="number" id="table-input" min="1" max="99" required aria-describedby="table-error">
+                                <input type="number" id="covers-input" min="1" max="20" placeholder="Couverts" title="Nombre de couverts">
+                            </div>
                             <div id="table-error" class="error-message" role="alert"></div>
+                        </div>
+                        <div class="form-group">
+                            <label for="client-name-input">Client (optionnel)</label>
+                            <input type="text" id="client-name-input" placeholder="Nom du client">
+                        </div>
+                        <div class="form-group">
+                            <label for="table-notes-input">Notes table (optionnel)</label>
+                            <textarea id="table-notes-input" rows="2" placeholder="Allergies, préférences, etc."></textarea>
                         </div>
                         <div class="form-group">
                             <label>Plat *</label>
@@ -91,8 +102,13 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="note-input">Note (optionnelle)</label>
-                            <textarea id="note-input" rows="2" placeholder="Instructions Spéciales..."></textarea>
+                            <label for="note-input">Note plat (optionnelle)</label>
+                            <textarea id="note-input" rows="2" placeholder="Instructions spéciales pour ce plat..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="item-allergen-check"> Plat contient des allergènes
+                            </label>
                         </div>
                         <button type="submit" class="btn btn-primary">Ajouter à la commande</button>
                     </form>
@@ -142,8 +158,127 @@
                 <div class="kitchen-header">
                     <h2>Vue hôte</h2>
                     <div class="kitchen-controls">
+                        <button id="tables-view-btn" class="btn btn-outline">Vue tables</button>
+                        <button id="reservations-view-btn" class="btn btn-outline">Réservations</button>
+                        <button id="stats-view-btn" class="btn btn-outline">Statistiques</button>
                         <button id="export-csv-btn" class="btn btn-outline">Exporter CSV</button>
                         <button id="export-sales-btn" class="btn btn-outline">Exporter ventes</button>
+                    </div>
+                </div>
+                
+                <!-- Tables Management View -->
+                <div id="tables-management" class="menu-section">
+                    <h2>Gestion des tables</h2>
+                    
+                    <!-- Floor Plan View Toggle -->
+                    <div class="view-mode-toggle">
+                        <button id="grid-view-btn" class="btn btn-outline active">Vue grille</button>
+                        <button id="floor-plan-view-btn" class="btn btn-outline">Plan de salle</button>
+                    </div>
+                    
+                    <!-- Grid View -->
+                    <div id="tables-grid-view" class="tables-grid-view">
+                        <div class="tables-grid" id="tables-grid">
+                            <!-- Tables will be rendered here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Floor Plan View -->
+                    <div id="tables-floor-plan-view" class="tables-floor-plan-view hidden">
+                        <div class="floor-plan-container">
+                            <div id="floor-plan" class="floor-plan">
+                                <!-- Floor plan will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="inline-row" style="margin-top: 1rem;">
+                        <button id="add-table-btn" class="btn btn-secondary">Ajouter une table</button>
+                        <input type="number" id="max-tables-input" placeholder="Nombre max de tables" min="1" max="200" style="max-width: 200px;">
+                        <button id="save-tables-config-btn" class="btn btn-primary">Enregistrer configuration</button>
+                    </div>
+                </div>
+                
+                <!-- Reservations View -->
+                <div id="reservations-management" class="menu-section hidden">
+                    <h2>Gestion des réservations</h2>
+                    
+                    <!-- Calendar View -->
+                    <div class="reservation-calendar-header">
+                        <button id="prev-day-btn" class="btn btn-outline">←</button>
+                        <div id="current-date-display" class="current-date-display"></div>
+                        <button id="next-day-btn" class="btn btn-outline">→</button>
+                        <button id="today-btn" class="btn btn-secondary">Aujourd'hui</button>
+                    </div>
+                    
+                    <div id="reservation-calendar" class="reservation-calendar">
+                        <!-- Calendar will be rendered here -->
+                    </div>
+                    
+                    <form id="reservation-form" class="inline-form" autocomplete="off" style="margin-top: 2rem;">
+                        <h3>Nouvelle réservation</h3>
+                        <div class="grid-row-3">
+                            <input type="text" id="reservation-name-input" placeholder="Nom du client *" required>
+                            <input type="number" id="reservation-covers-input" placeholder="Nombre de couverts *" min="1" required>
+                            <input type="date" id="reservation-date-input" required>
+                            <input type="time" id="reservation-time-input" required>
+                            <select id="reservation-table-select">
+                                <option value="">Table (optionnel)</option>
+                            </select>
+                            <input type="tel" id="reservation-phone-input" placeholder="Téléphone">
+                            <input type="email" id="reservation-email-input" placeholder="Email (optionnel)">
+                            <select id="reservation-occasion-select">
+                                <option value="">Occasion</option>
+                                <option value="anniversary">Anniversaire</option>
+                                <option value="birthday">Fête d'anniversaire</option>
+                                <option value="business">Dîner d'affaires</option>
+                                <option value="romantic">Romantique</option>
+                                <option value="other">Autre</option>
+                            </select>
+                            <textarea id="reservation-notes-input" placeholder="Notes (allergies, préférences...)" rows="2"></textarea>
+                            <button type="submit" class="btn btn-primary">Ajouter réservation</button>
+                        </div>
+                    </form>
+                    
+                    <div id="reservations-list" class="reservations-list" style="margin-top: 2rem;">
+                        <!-- Reservations will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- Statistics View -->
+                <div id="statistics-view" class="menu-section hidden">
+                    <h2>Statistiques</h2>
+                    <div class="stats-filters">
+                        <select id="stats-period-select">
+                            <option value="today">Aujourd'hui</option>
+                            <option value="week">Cette semaine</option>
+                            <option value="month">Ce mois</option>
+                            <option value="all">Tout</option>
+                        </select>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Chiffre d'affaires</h3>
+                            <div class="stat-value" id="stat-revenue">0,00 €</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Nombre de commandes</h3>
+                            <div class="stat-value" id="stat-orders">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Tables servies</h3>
+                            <div class="stat-value" id="stat-tables">0</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Panier moyen</h3>
+                            <div class="stat-value" id="stat-average">0,00 €</div>
+                        </div>
+                    </div>
+                    <div class="menu-section" style="margin-top: 2rem;">
+                        <h3>Plats les plus vendus</h3>
+                        <div id="top-dishes-list" class="top-dishes-list">
+                            <!-- Top dishes will be rendered here -->
+                        </div>
                     </div>
                 </div>
                 <div class="menu-section">
@@ -159,12 +294,18 @@
 
                         <form id="dish-form" class="inline-form" autocomplete="off">
                             <label for="dish-category-select">Nouveau plat</label>
-                            <div class="grid-row-3">
+                            <div class="grid-row-4">
                                 <select id="dish-category-select" required>
                                     <option value="" selected>Choisir catégorie…</option>
                                 </select>
                                 <input type="text" id="dish-name-input" placeholder="Nom du plat" required>
                                 <input type="number" step="0.01" min="0" id="dish-price-input" placeholder="Prix (€)" required>
+                                <select id="dish-availability-select">
+                                    <option value="available" selected>Disponible</option>
+                                    <option value="unavailable">Indisponible</option>
+                                </select>
+                                <input type="text" id="dish-allergens-input" placeholder="Allergènes (ex: gluten, lactose)">
+                                <textarea id="dish-description-input" placeholder="Description (optionnel)" rows="2"></textarea>
                                 <button type="submit" class="btn btn-primary">Ajouter plat</button>
                             </div>
                         </form>
@@ -179,7 +320,81 @@
                         <p>Aucune commande</p>
                     </div>
                 </div>
+                
+                <!-- Client Preferences -->
+                <div class="menu-section" id="client-preferences-section">
+                    <h2>Clients récurrents</h2>
+                    <div class="client-search">
+                        <input type="text" id="client-search-input" placeholder="Rechercher un client par nom ou téléphone...">
+                    </div>
+                    <div id="client-preferences-list" class="client-preferences-list">
+                        <!-- Client preferences will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- History View -->
+                <div id="history-section" class="menu-section">
+                    <h2>Historique des commandes</h2>
+                    <div class="history-filters">
+                        <select id="history-filter-select">
+                            <option value="all">Toutes les commandes</option>
+                            <option value="today">Aujourd'hui</option>
+                            <option value="week">Cette semaine</option>
+                            <option value="month">Ce mois</option>
+                        </select>
+                        <input type="text" id="history-search-input" placeholder="Rechercher par table, client...">
+                    </div>
+                    <div id="history-list" class="history-list">
+                        <!-- History will be rendered here -->
+                    </div>
+                </div>
 
+                <!-- Restaurant Settings -->
+                <div class="menu-section" id="restaurant-settings">
+                    <h2>Paramètres du restaurant</h2>
+                    <form id="restaurant-settings-form" class="inline-form" autocomplete="off">
+                        <div class="form-group">
+                            <label for="restaurant-name-input">Nom du restaurant</label>
+                            <input type="text" id="restaurant-name-input" placeholder="Nom du restaurant">
+                        </div>
+                        <div class="form-group">
+                            <label for="restaurant-phone-input">Téléphone</label>
+                            <input type="tel" id="restaurant-phone-input" placeholder="Téléphone">
+                        </div>
+                        <div class="form-group">
+                            <label for="restaurant-email-input">Email</label>
+                            <input type="email" id="restaurant-email-input" placeholder="Email">
+                        </div>
+                        <div class="form-group">
+                            <label for="restaurant-address-input">Adresse</label>
+                            <textarea id="restaurant-address-input" rows="2" placeholder="Adresse complète"></textarea>
+                        </div>
+                        <h3 style="margin-top: 2rem;">Horaires d'ouverture</h3>
+                        <div id="opening-hours-container" class="opening-hours-container">
+                            <!-- Opening hours will be rendered here -->
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Enregistrer</button>
+                    </form>
+                </div>
+                
+                <!-- Events Management -->
+                <div class="menu-section" id="events-management">
+                    <h2>Gestion des événements</h2>
+                    <form id="event-form" class="inline-form" autocomplete="off">
+                        <div class="grid-row-3">
+                            <input type="text" id="event-name-input" placeholder="Nom de l'événement *" required>
+                            <input type="date" id="event-date-input" required>
+                            <input type="time" id="event-time-input">
+                            <textarea id="event-description-input" placeholder="Description" rows="2"></textarea>
+                            <input type="number" id="event-capacity-input" placeholder="Capacité max" min="1">
+                            <button type="submit" class="btn btn-primary">Ajouter événement</button>
+                        </div>
+                    </form>
+                    <div id="events-list" class="events-list">
+                        <!-- Events will be rendered here -->
+                    </div>
+                </div>
+                
                 <!-- POS Settings -->
                 <div class="menu-section" id="pos-settings">
                     <h2>Paramètres d'encaissement</h2>
@@ -236,9 +451,16 @@
                         <label for="payment-method">Méthode</label>
                         <select id="payment-method">
                             <option value="cash" selected>Espèces</option>
-                            <option value="card">Carte</option>
+                            <option value="card">Carte bancaire</option>
+                            <option value="cheque">Chèque</option>
+                            <option value="voucher">Bon d'achat</option>
+                            <option value="split">Paiement partagé</option>
                             <option value="other">Autre</option>
                         </select>
+                    </div>
+                    <div class="payment-row" id="split-payment-row" style="display: none;">
+                        <label for="split-amount">Montant pour ce paiement</label>
+                        <input type="number" id="split-amount" step="0.01" min="0" placeholder="0,00">
                     </div>
                     <div class="payment-row" id="payment-received-row">
                         <label for="payment-received">Reçu</label>
