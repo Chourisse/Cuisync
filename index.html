@@ -123,7 +123,18 @@
                 </div>
 
                 <div class="pads-section">
-                    <h2>Commandes en cours</h2>
+                    <div class="pads-section-header">
+                        <h2>Commandes en cours</h2>
+                        <div class="pads-filters">
+                            <input type="text" id="server-search-input" placeholder="Rechercher par table, client..." class="search-input">
+                            <select id="server-status-filter" class="status-filter">
+                                <option value="all">Toutes</option>
+                                <option value="open">Ouvertes</option>
+                                <option value="sent">Envoyées</option>
+                                <option value="ready">Prêtes</option>
+                            </select>
+                        </div>
+                    </div>
                     <div id="server-pads-container" class="pads-container">
                         <div class="empty-state">
                             <p>Aucune commande en cours</p>
@@ -348,7 +359,14 @@
                     </div>
                 </div>
                 <div class="menu-section">
-                    <h2>Gestion du menu</h2>
+                    <div class="menu-section-header">
+                        <h2>Gestion du menu</h2>
+                        <div class="menu-actions">
+                            <input type="text" id="menu-search-input" placeholder="Rechercher un plat..." class="search-input">
+                            <button id="import-menu-btn" class="btn btn-outline">Importer menu</button>
+                            <button id="export-menu-btn" class="btn btn-outline">Exporter menu</button>
+                        </div>
+                    </div>
                     <div class="menu-forms">
                         <form id="category-form" class="inline-form" autocomplete="off">
                             <label for="category-name-input">Nouvelle catégorie</label>
@@ -409,9 +427,23 @@
                             <option value="month">Ce mois</option>
                         </select>
                         <input type="text" id="history-search-input" placeholder="Rechercher par table, client...">
+                        <button id="clear-history-btn" class="btn btn-danger btn-sm">Effacer l'historique</button>
                     </div>
                     <div id="history-list" class="history-list">
                         <!-- History will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- Backup & Restore -->
+                <div class="menu-section" id="backup-section">
+                    <h2>Sauvegarde et restauration</h2>
+                    <div class="backup-actions">
+                        <button id="backup-all-btn" class="btn btn-primary">Sauvegarder toutes les données</button>
+                        <button id="restore-btn" class="btn btn-secondary">Restaurer depuis un fichier</button>
+                        <input type="file" id="restore-file-input" accept=".json" style="display: none;">
+                    </div>
+                    <div class="backup-info">
+                        <p class="backup-note">💡 Sauvegardez régulièrement vos données pour éviter toute perte. La restauration remplacera toutes les données actuelles.</p>
                     </div>
                 </div>
 
@@ -492,7 +524,13 @@
 
                 <!-- Payment Panel -->
                 <div id="payment-panel" class="payment-panel hidden" role="dialog" aria-modal="true" aria-labelledby="payment-title">
-                    <h3 id="payment-title">Encaisser</h3>
+                    <div class="payment-panel-header">
+                        <h3 id="payment-title">Encaisser</h3>
+                        <button id="payment-close-btn" class="btn btn-icon" aria-label="Fermer">✕</button>
+                    </div>
+                    <div id="payment-pad-summary" class="payment-pad-summary">
+                        <!-- Pad summary will be rendered here -->
+                    </div>
                     <div class="payment-row">
                         <label>Sous-total</label>
                         <div id="payment-subtotal">0,00 €</div>

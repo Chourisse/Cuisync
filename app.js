@@ -157,6 +157,27 @@ class CuisyncApp {
             clientSearchInput: document.getElementById('client-search-input'),
             clientPreferencesList: document.getElementById('client-preferences-list'),
             
+            // Server view search
+            serverSearchInput: document.getElementById('server-search-input'),
+            serverStatusFilter: document.getElementById('server-status-filter'),
+            
+            // Menu search
+            menuSearchInput: document.getElementById('menu-search-input'),
+            importMenuBtn: document.getElementById('import-menu-btn'),
+            exportMenuBtn: document.getElementById('export-menu-btn'),
+            
+            // Payment panel
+            paymentCloseBtn: document.getElementById('payment-close-btn'),
+            paymentPadSummary: document.getElementById('payment-pad-summary'),
+            
+            // History
+            clearHistoryBtn: document.getElementById('clear-history-btn'),
+            
+            // Backup
+            backupAllBtn: document.getElementById('backup-all-btn'),
+            restoreBtn: document.getElementById('restore-btn'),
+            restoreFileInput: document.getElementById('restore-file-input'),
+            
             // Kitchen
             kitchenFilterSelect: document.getElementById('kitchen-filter-select'),
             soundToggleBtn: document.getElementById('sound-toggle-btn'),
@@ -483,6 +504,48 @@ class CuisyncApp {
         // Client search
         if (this.dom.clientSearchInput) {
             this.dom.clientSearchInput.addEventListener('input', () => this.renderClientPreferences());
+        }
+        
+        // Server view search
+        if (this.dom.serverSearchInput) {
+            this.dom.serverSearchInput.addEventListener('input', () => this.renderServerView());
+        }
+        if (this.dom.serverStatusFilter) {
+            this.dom.serverStatusFilter.addEventListener('change', () => this.renderServerView());
+        }
+        
+        // Menu search
+        if (this.dom.menuSearchInput) {
+            this.dom.menuSearchInput.addEventListener('input', () => this.renderMenuList());
+        }
+        if (this.dom.importMenuBtn) {
+            this.dom.importMenuBtn.addEventListener('click', () => this.importMenu());
+        }
+        if (this.dom.exportMenuBtn) {
+            this.dom.exportMenuBtn.addEventListener('click', () => this.exportMenu());
+        }
+        
+        // Payment panel close
+        if (this.dom.paymentCloseBtn) {
+            this.dom.paymentCloseBtn.addEventListener('click', () => this.closePaymentPanel());
+        }
+        
+        // History
+        if (this.dom.clearHistoryBtn) {
+            this.dom.clearHistoryBtn.addEventListener('click', () => this.clearHistory());
+        }
+        
+        // Backup & Restore
+        if (this.dom.backupAllBtn) {
+            this.dom.backupAllBtn.addEventListener('click', () => this.backupAllData());
+        }
+        if (this.dom.restoreBtn) {
+            this.dom.restoreBtn.addEventListener('click', () => {
+                if (this.dom.restoreFileInput) this.dom.restoreFileInput.click();
+            });
+        }
+        if (this.dom.restoreFileInput) {
+            this.dom.restoreFileInput.addEventListener('change', (e) => this.restoreFromFile(e));
         }
         
         // Kitchen
@@ -876,27 +939,64 @@ class CuisyncApp {
     }
     
     handleFormSubmit() {
-        if (!this.validateForm()) return;
+        if (!this.validateForm()) {
+            // Focus on first error field
+            if (this.dom.tableInput && !this.dom.tableInput.value) {
+                this.dom.tableInput.focus();
+            } else if (this.dom.dishInput && !this.dom.dishInput.value.trim() && (!this.dom.dishSelect || !this.dom.dishSelect.value)) {
+                this.dom.dishInput.focus();
+            }
+            return;
+        }
         
         const tableNum = parseInt(this.dom.tableInput.value);
-        const covers = this.dom.coversInput ? parseInt(this.dom.coversInput.value) || null : null;
+        if (isNaN(tableNum) || tableNum < 1 || tableNum > 99) {
+            this.showToast('Numéro de table invalide', 'error');
+            return;
+        }
+        
+        const coversStr = this.dom.coversInput ? this.dom.coversInput.value : '';
+        const covers = coversStr ? (parseInt(coversStr) || null) : null;
+        if (covers !== null && (covers < 1 || covers > 50)) {
+            this.showToast('Nombre de couverts invalide (1-50)', 'error');
+            return;
+        }
+        
         const clientName = this.dom.clientNameInput ? this.dom.clientNameInput.value.trim() : null;
         const tableNotes = this.dom.tableNotesInput ? this.dom.tableNotesInput.value.trim() : null;
-        let dish = this.dom.dishInput.value.trim();
-        const qty = parseInt(this.dom.qtyInput.value);
-        const course = this.dom.courseInput.value;
-        const note = this.dom.noteInput.value.trim();
+        let dish = this.dom.dishInput ? this.dom.dishInput.value.trim() : '';
+        const qty = parseInt(this.dom.qtyInput ? this.dom.qtyInput.value : '1');
+        const course = this.dom.courseInput ? this.dom.courseInput.value : 'plat';
+        const note = this.dom.noteInput ? this.dom.noteInput.value.trim() : null;
         const hasAllergens = this.dom.itemAllergenCheck ? this.dom.itemAllergenCheck.checked : false;
         const selectedCategory = this.getSelectedCategory();
         const selectedDish = this.getSelectedDish();
-        const price = this.dom.priceInput && this.dom.priceInput.value !== '' ? parseFloat(this.dom.priceInput.value) : (selectedDish ? selectedDish.price : null);
+        
+        let price = null;
+        if (this.dom.priceInput && this.dom.priceInput.value !== '') {
+            price = parseFloat(this.dom.priceInput.value);
+            if (isNaN(price) || price < 0) price = null;
+        } else if (selectedDish && typeof selectedDish.price === 'number') {
+            price = selectedDish.price;
+        }
+        
         if (selectedDish) {
             dish = selectedDish.name;
         }
         
+        if (!dish || dish.trim() === '') {
+            this.showToast('Le nom du plat est requis', 'error');
+            return;
+        }
+        
+        if (qty < 1 || qty > 100) {
+            this.showToast('Quantité invalide (1-100)', 'error');
+            return;
+        }
+        
         this.addItemToPad(tableNum, dish, qty, course, note, {
             categoryName: selectedCategory ? selectedCategory.name : null,
-            price: price !== null && !isNaN(price) ? price : null,
+            price: price,
             hasAllergens: hasAllergens
         }, {
             covers: covers,
@@ -905,7 +1005,7 @@ class CuisyncApp {
         });
         this.recalculateTotal();
         this.clearForm();
-        this.dom.tableInput.focus();
+        if (this.dom.tableInput) this.dom.tableInput.focus();
     }
     
     validateForm() {
@@ -1350,11 +1450,28 @@ class CuisyncApp {
 
     renderMenuList() {
         if (!this.dom.menuList) return;
-        const categories = this.menu.categories;
+        let categories = this.menu.categories;
         if (!categories || categories.length === 0) {
             this.dom.menuList.innerHTML = '<div class="empty-state"><p>Aucune catégorie/plat enregistrés</p></div>';
             return;
         }
+        
+        // Apply search filter
+        const search = this.dom.menuSearchInput ? this.dom.menuSearchInput.value.toLowerCase() : '';
+        if (search) {
+            categories = categories.map(cat => {
+                const filteredDishes = (cat.dishes || []).filter(d => 
+                    d.name.toLowerCase().includes(search) ||
+                    (d.description && d.description.toLowerCase().includes(search)) ||
+                    (d.allergens && d.allergens.toLowerCase().includes(search))
+                );
+                if (cat.name.toLowerCase().includes(search) || filteredDishes.length > 0) {
+                    return { ...cat, dishes: filteredDishes };
+                }
+                return null;
+            }).filter(Boolean);
+        }
+        
 		const html = categories.map(cat => {
             const dishes = cat.dishes || [];
             const chips = dishes.length ? dishes.map(d => `
@@ -1378,43 +1495,64 @@ class CuisyncApp {
         }).join('');
         this.dom.menuList.innerHTML = html;
 		// Attach handlers
-		this.dom.menuList.querySelectorAll('[data-action="delete-category"]').forEach(btn => {
-			btn.addEventListener('click', (e) => {
-				const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
-				if (id) this.deleteCategory(id);
-			});
-		});
-
-        this.dom.menuList.querySelectorAll('[data-action="edit-category"]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
-                if (id) this.editCategory(id);
+		if (this.dom.menuList) {
+            this.dom.menuList.querySelectorAll('[data-action="delete-category"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
+                    if (id) this.deleteCategory(id);
+                });
             });
-        });
 
-        this.dom.menuList.querySelectorAll('[data-action="edit-dish"]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const { categoryId, dishId } = e.currentTarget.dataset || {};
-                if (categoryId && dishId) this.editDish(categoryId, dishId);
+            this.dom.menuList.querySelectorAll('[data-action="edit-category"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.categoryId : null;
+                    if (id) this.editCategory(id);
+                });
             });
-        });
 
-        this.dom.menuList.querySelectorAll('[data-action="delete-dish"]').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const { categoryId, dishId } = e.currentTarget.dataset || {};
-                if (categoryId && dishId) this.deleteDish(categoryId, dishId);
+            this.dom.menuList.querySelectorAll('[data-action="edit-dish"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const { categoryId, dishId } = e.currentTarget.dataset || {};
+                    if (categoryId && dishId) this.editDish(categoryId, dishId);
+                });
             });
-        });
+
+            this.dom.menuList.querySelectorAll('[data-action="delete-dish"]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const { categoryId, dishId } = e.currentTarget.dataset || {};
+                    if (categoryId && dishId) this.deleteDish(categoryId, dishId);
+                });
+            });
+        }
     }
    
    renderServerView() {
        const container = this.dom.serverPadsContainer;
-       const pads = this.pads.filter(p => p.status !== 'served');
+       let pads = this.pads.filter(p => p.status !== 'served');
+       
+       // Apply search filter
+       const search = this.dom.serverSearchInput ? this.dom.serverSearchInput.value.toLowerCase() : '';
+       if (search) {
+           pads = pads.filter(p => 
+               String(p.table).includes(search) ||
+               (p.clientName && p.clientName.toLowerCase().includes(search)) ||
+               (p.items && p.items.some(item => item.dish.toLowerCase().includes(search)))
+           );
+       }
+       
+       // Apply status filter
+       const statusFilter = this.dom.serverStatusFilter ? this.dom.serverStatusFilter.value : 'all';
+       if (statusFilter !== 'all') {
+           pads = pads.filter(p => p.status === statusFilter);
+       }
        
        if (pads.length === 0) {
            container.innerHTML = '<div class="empty-state"><p>Aucune commande en cours</p></div>';
            return;
        }
+       
+       // Sort by table number
+       pads.sort((a, b) => a.table - b.table);
        
        container.innerHTML = pads.map(pad => this.renderPadHTML(pad, 'server')).join('');
        
@@ -1430,6 +1568,9 @@ class CuisyncApp {
                        break;
                    case 'delete':
                        this.deletePad(padId);
+                       break;
+                   case 'edit':
+                       this.editPad(padId);
                        break;
                }
            });
@@ -1607,6 +1748,9 @@ class CuisyncApp {
                    case 'delete':
                        this.deletePad(padId);
                        break;
+                   case 'edit':
+                       this.editPad(padId);
+                       break;
                }
            });
        });
@@ -1683,6 +1827,7 @@ class CuisyncApp {
           if (pad.status === 'open') {
               actionsHTML = `
                   <button class="btn btn-secondary btn-sm" data-action="send" data-pad-id="${pad.id}">Envoyer</button>
+                  <button class="btn btn-outline btn-sm" data-action="edit" data-pad-id="${pad.id}">Modifier</button>
                   <button class="btn btn-danger btn-sm" data-action="delete" data-pad-id="${pad.id}">Supprimer</button>
               `;
           } else if (pad.status === 'sent') {
@@ -1872,6 +2017,24 @@ class CuisyncApp {
         if (!pad || !this.dom.paymentPanel) return;
         const subtotal = this.getPadTotal(pad);
         const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+        
+        // Render pad summary
+        if (this.dom.paymentPadSummary) {
+            const itemsHTML = (pad.items || []).map(item => {
+                const itemTotal = (typeof item.price === 'number' ? item.price : 0) * (typeof item.qty === 'number' ? item.qty : 0);
+                return `
+                    <div class="payment-item-summary">
+                        <span>${item.qty}x ${this.escapeHTML(item.dish)}</span>
+                        <span>${itemTotal.toFixed(2)} €</span>
+                    </div>
+                `;
+            }).join('');
+            this.dom.paymentPadSummary.innerHTML = `
+                <div class="payment-summary-header">Table ${pad.table}${pad.covers ? ` — ${pad.covers} couverts` : ''}</div>
+                <div class="payment-items-summary">${itemsHTML}</div>
+            `;
+        }
+        
         if (this.dom.paymentSubtotal) this.dom.paymentSubtotal.textContent = `${subtotal.toFixed(2)} ${this.posSettings?.currency || '€'}`;
         if (this.dom.paymentTax) this.dom.paymentTax.textContent = `${(subtotal * taxRate / 100).toFixed(2)} ${this.posSettings?.currency || '€'}`;
         if (this.dom.paymentTotal) this.dom.paymentTotal.textContent = `${(subtotal + (subtotal * taxRate / 100)).toFixed(2)} ${this.posSettings?.currency || '€'}`;
@@ -1882,6 +2045,11 @@ class CuisyncApp {
         if (this.dom.paymentTip) this.dom.paymentTip.value = this.posSettings ? String((subtotal * (this.posSettings.defaultTipPct || 0) / 100).toFixed(2)) : '';
         this.updatePaymentUI();
         this.dom.paymentPanel.classList.remove('hidden');
+        
+        // Focus on payment received if cash
+        if (this.dom.paymentMethod && this.dom.paymentMethod.value === 'cash' && this.dom.paymentReceived) {
+            setTimeout(() => this.dom.paymentReceived.focus(), 100);
+        }
     }
 
     closePaymentPanel() {
@@ -1924,42 +2092,6 @@ class CuisyncApp {
        this.dom.paymentChange.textContent = display;
    }
 
-    confirmPayment() {
-        if (!this.currentPaymentPadId) return;
-        const padId = this.currentPaymentPadId;
-        const method = this.dom.paymentMethod ? this.dom.paymentMethod.value : 'other';
-        const pad = this.pads.find(p => p.id === padId);
-        const subtotal = this.getPadTotal(pad);
-        const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
-        const discount = parseFloat(this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0') || 0;
-        const tip = parseFloat(this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0') || 0;
-        const total = Math.max(0, subtotal - discount) + (subtotal * taxRate / 100) + tip;
-        if (method === 'cash') {
-            const received = parseFloat(this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0');
-            if (isNaN(received) || received < total) {
-                this.showToast('Montant reçu insuffisant', 'error');
-                return;
-            }
-        }
-        // Record sale
-        this.recordSale({
-            padId,
-            table: pad.table,
-            subtotal,
-            discount,
-            tax: subtotal * taxRate / 100,
-            tip,
-            total,
-            method,
-            createdAt: new Date().toISOString()
-        });
-        this.closePaymentPanel();
-        this.markPadPaid(padId);
-        if (this.posSettings && this.posSettings.printAfterPay) {
-            this.printPadReceipt(padId);
-        }
-    }
-   
    updateSendAllButton() {
        const openPads = this.pads.filter(p => p.status === 'open');
        this.dom.sendAllBtn.disabled = openPads.length === 0;
@@ -2203,29 +2335,84 @@ class CuisyncApp {
    // Reservations Management
    addReservation() {
        if (!this.dom.reservationForm) return;
-       const name = this.dom.reservationNameInput.value.trim();
-       const covers = parseInt(this.dom.reservationCoversInput.value);
-       const date = this.dom.reservationDateInput.value;
+       
+       const name = this.dom.reservationNameInput ? this.dom.reservationNameInput.value.trim() : '';
+       const coversStr = this.dom.reservationCoversInput ? this.dom.reservationCoversInput.value : '';
+       const date = this.dom.reservationDateInput ? this.dom.reservationDateInput.value : '';
        const time = this.dom.reservationTimeInput ? this.dom.reservationTimeInput.value : '19:00';
-       const tableNum = this.dom.reservationTableSelect.value ? parseInt(this.dom.reservationTableSelect.value) : null;
-       const phone = this.dom.reservationPhoneInput.value.trim();
+       const tableNumStr = this.dom.reservationTableSelect && this.dom.reservationTableSelect.value ? this.dom.reservationTableSelect.value : '';
+       const phone = this.dom.reservationPhoneInput ? this.dom.reservationPhoneInput.value.trim() : '';
        const email = this.dom.reservationEmailInput ? this.dom.reservationEmailInput.value.trim() : null;
        const occasion = this.dom.reservationOccasionSelect ? this.dom.reservationOccasionSelect.value : null;
-       const notes = this.dom.reservationNotesInput.value.trim();
+       const notes = this.dom.reservationNotesInput ? this.dom.reservationNotesInput.value.trim() : null;
        
-       if (!name || !covers || !date || !time) {
-           this.showToast('Veuillez remplir tous les champs obligatoires', 'error');
+       // Validation
+       if (!name || name.length < 2) {
+           this.showToast('Le nom du client est requis (min 2 caractères)', 'error');
            return;
        }
        
+       const covers = parseInt(coversStr);
+       if (!coversStr || isNaN(covers) || covers < 1 || covers > 50) {
+           this.showToast('Nombre de couverts invalide (1-50)', 'error');
+           return;
+       }
+       
+       if (!date) {
+           this.showToast('La date est requise', 'error');
+           return;
+       }
+       
+       if (!time) {
+           this.showToast('L\'heure est requise', 'error');
+           return;
+       }
+       
+       // Check if date is in the past
        const datetime = `${date}T${time}`;
+       const reservationDate = new Date(datetime);
+       const now = new Date();
+       if (reservationDate < now) {
+           if (!confirm('Cette réservation est dans le passé. Voulez-vous continuer ?')) {
+               return;
+           }
+       }
+       
+       // Check if table is already reserved at this time
+       const tableNum = tableNumStr ? parseInt(tableNumStr) : null;
+       if (tableNum) {
+           const conflictingReservation = this.reservations.find(r => 
+               r.tableNum === tableNum &&
+               r.status !== 'cancelled' &&
+               r.status !== 'completed' &&
+               new Date(r.date).toDateString() === reservationDate.toDateString() &&
+               Math.abs(new Date(r.date).getTime() - reservationDate.getTime()) < 2 * 60 * 60 * 1000 // 2 hours window
+           );
+           if (conflictingReservation) {
+               if (!confirm(`La table ${tableNum} est déjà réservée à cette heure. Voulez-vous continuer ?`)) {
+                   return;
+               }
+           }
+       }
+       
+       // Validate email if provided
+       if (email && email.trim() && !this.isValidEmail(email)) {
+           this.showToast('Adresse email invalide', 'error');
+           return;
+       }
+       
+       // Validate phone if provided
+       if (phone && phone.trim() && !this.isValidPhone(phone)) {
+           this.showToast('Numéro de téléphone invalide', 'error');
+           return;
+       }
        
        const reservation = {
            id: this.generateId(),
-           name,
-           covers,
+           name: name.trim(),
+           covers: covers,
            date: datetime,
-           tableNum,
+           tableNum: tableNum,
            phone: phone || null,
            email: email || null,
            occasion: occasion || null,
@@ -2244,6 +2431,7 @@ class CuisyncApp {
        if (tableNum) {
            this.updateTableStatus(tableNum, 'reserved');
        }
+       
        this.saveToStorage();
        this.renderReservations();
        this.renderReservationCalendar();
@@ -2251,6 +2439,27 @@ class CuisyncApp {
        this.refreshReservationTableSelect();
        this.dom.reservationForm.reset();
        this.showToast('Réservation ajoutée', 'success');
+       
+       // Add notification
+       this.addNotification({
+           type: 'reservation',
+           title: 'Nouvelle réservation',
+           message: `${name} - ${covers} couverts le ${this.formatDate(datetime)}`,
+           reservationId: reservation.id,
+           priority: 'normal',
+           createdAt: new Date().toISOString()
+       });
+   }
+   
+   isValidEmail(email) {
+       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+       return emailRegex.test(email);
+   }
+   
+   isValidPhone(phone) {
+       // Basic phone validation (allows international format)
+       const phoneRegex = /^[\d\s\+\-\(\)]{8,20}$/;
+       return phoneRegex.test(phone);
    }
    
    renderReservations() {
@@ -2685,31 +2894,59 @@ class CuisyncApp {
    
    // Update confirmPayment to handle split payment
    confirmPayment() {
-       if (!this.currentPaymentPadId) return;
+       if (!this.currentPaymentPadId) {
+           this.showToast('Aucune commande sélectionnée', 'error');
+           return;
+       }
+       
        const padId = this.currentPaymentPadId;
-       const method = this.dom.paymentMethod ? this.dom.paymentMethod.value : 'other';
        const pad = this.pads.find(p => p.id === padId);
+       if (!pad) {
+           this.showToast('Commande introuvable', 'error');
+           this.closePaymentPanel();
+           return;
+       }
+       
+       const method = this.dom.paymentMethod ? this.dom.paymentMethod.value : 'other';
        const subtotal = this.getPadTotal(pad);
-       const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
-       const discount = parseFloat(this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0') || 0;
-       const tip = parseFloat(this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0') || 0;
-       let total = Math.max(0, subtotal - discount) + (subtotal * taxRate / 100) + tip;
+       
+       if (subtotal <= 0) {
+           this.showToast('Le total de la commande doit être supérieur à 0', 'error');
+           return;
+       }
+       
+       const taxRate = this.posSettings ? (Math.max(0, this.posSettings.taxRatePct || 0)) : 0;
+       const discountStr = this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0';
+       const tipStr = this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0';
+       const discount = Math.max(0, parseFloat(discountStr) || 0);
+       const tip = Math.max(0, parseFloat(tipStr) || 0);
+       
+       if (discount > subtotal) {
+           this.showToast('La remise ne peut pas être supérieure au sous-total', 'error');
+           return;
+       }
+       
+       let total = Math.max(0, subtotal - discount) + (Math.max(0, subtotal - discount) * taxRate / 100) + tip;
        
        // Handle split payment
        if (method === 'split' && this.dom.splitAmount && this.dom.splitAmount.value) {
            const splitAmount = parseFloat(this.dom.splitAmount.value);
-           if (!isNaN(splitAmount) && splitAmount > 0 && splitAmount <= total) {
-               total = splitAmount;
-           } else {
+           if (isNaN(splitAmount) || splitAmount <= 0) {
                this.showToast('Montant de paiement partagé invalide', 'error');
                return;
            }
+           if (splitAmount > total) {
+               this.showToast('Le montant partagé ne peut pas être supérieur au total', 'error');
+               return;
+           }
+           total = splitAmount;
        }
        
        if (method === 'cash') {
-           const received = parseFloat(this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0');
+           const receivedStr = this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0';
+           const received = parseFloat(receivedStr) || 0;
            if (isNaN(received) || received < total) {
-               this.showToast('Montant reçu insuffisant', 'error');
+               this.showToast(`Montant reçu insuffisant. Total: ${total.toFixed(2)} €`, 'error');
                return;
            }
        }
@@ -2718,11 +2955,11 @@ class CuisyncApp {
        this.recordSale({
            padId,
            table: pad.table,
-           subtotal,
-           discount,
-           tax: subtotal * taxRate / 100,
-           tip,
-           total,
+           subtotal: Math.max(0, subtotal),
+           discount: Math.max(0, discount),
+           tax: Math.max(0, (Math.max(0, subtotal - discount) * taxRate / 100)),
+           tip: Math.max(0, tip),
+           total: Math.max(0, total),
            method,
            createdAt: new Date().toISOString()
        });
@@ -2730,7 +2967,9 @@ class CuisyncApp {
        this.closePaymentPanel();
        this.markPadPaid(padId);
        if (this.posSettings && this.posSettings.printAfterPay) {
-           this.printPadReceipt(padId);
+           setTimeout(() => {
+               this.printPadReceipt(padId);
+           }, 500);
        }
    }
    

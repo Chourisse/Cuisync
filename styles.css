@@ -1542,3 +1542,124 @@ input:invalid, select:invalid, textarea:invalid {
         height: 150px;
     }
 }
+
+/* Pads Section Header */
+.pads-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-4);
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+}
+
+.pads-filters {
+    display: flex;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+}
+
+.search-input {
+    min-width: 200px;
+    flex: 1;
+}
+
+.status-filter {
+    min-width: 120px;
+}
+
+/* Menu Section Header */
+.menu-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-4);
+    flex-wrap: wrap;
+    gap: var(--spacing-3);
+}
+
+.menu-actions {
+    display: flex;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+}
+
+/* Payment Panel Improvements */
+.payment-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-4);
+}
+
+.payment-panel-header h3 {
+    margin: 0;
+}
+
+.payment-pad-summary {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-3);
+    margin-bottom: var(--spacing-4);
+}
+
+.payment-summary-header {
+    font-weight: 600;
+    margin-bottom: var(--spacing-2);
+    padding-bottom: var(--spacing-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.payment-items-summary {
+    display: grid;
+    gap: var(--spacing-2);
+    font-size: var(--font-size-sm);
+}
+
+.payment-item-summary {
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Backup Section */
+.backup-actions {
+    display: flex;
+    gap: var(--spacing-3);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-4);
+}
+
+.backup-info {
+    margin-top: var(--spacing-4);
+}
+
+.backup-note {
+    font-size: var(--font-size-sm);
+    color: var(--muted);
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .pads-section-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .pads-filters {
+        flex-direction: column;
+    }
+    
+    .menu-section-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .menu-actions {
+        flex-direction: column;
+    }
+    
+    .backup-actions {
+        flex-direction: column;
+    }
+}
