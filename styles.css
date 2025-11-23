@@ -1326,3 +1326,219 @@ input:invalid, select:invalid, textarea:invalid {
         max-width: 100%;
     }
 }
+
+/* Kitchen Stats */
+.kitchen-stats {
+    display: flex;
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-4);
+    padding: var(--spacing-4);
+    background-color: var(--bg-secondary);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.kitchen-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+.stat-label {
+    font-size: var(--font-size-sm);
+    color: var(--muted);
+    margin-bottom: var(--spacing-1);
+}
+
+.kitchen-filter {
+    padding: var(--spacing-2) var(--spacing-3);
+}
+
+/* Pad Timer */
+.pad-timer {
+    font-size: var(--font-size-sm);
+    color: var(--muted);
+    margin-top: var(--spacing-2);
+    padding: var(--spacing-1) var(--spacing-2);
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius);
+    display: inline-block;
+}
+
+.pad-timer.warning {
+    color: var(--warning);
+    background-color: rgba(245, 158, 11, 0.1);
+    font-weight: 600;
+}
+
+/* Notifications */
+.notifications-list {
+    display: grid;
+    gap: var(--spacing-3);
+}
+
+.notification-item {
+    display: flex;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3);
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    align-items: flex-start;
+}
+
+.notification-item.high {
+    border-left: 4px solid var(--warning);
+}
+
+.notification-icon {
+    font-size: var(--font-size-xl);
+}
+
+.notification-content {
+    flex: 1;
+}
+
+.notification-title {
+    font-weight: 600;
+    margin-bottom: var(--spacing-1);
+}
+
+.notification-message {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--spacing-1);
+}
+
+.notification-time {
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+}
+
+/* Servers */
+.servers-list {
+    display: grid;
+    gap: var(--spacing-4);
+    margin-top: var(--spacing-4);
+}
+
+.server-card {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--spacing-4);
+}
+
+.server-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-3);
+}
+
+.server-header h4 {
+    margin: 0;
+}
+
+.server-status {
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+}
+
+.server-status.active {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: var(--mint);
+}
+
+.server-status.inactive {
+    background-color: rgba(148, 163, 184, 0.2);
+    color: var(--muted);
+}
+
+.server-info {
+    font-size: var(--font-size-sm);
+    color: var(--muted);
+    margin-bottom: var(--spacing-3);
+}
+
+.server-actions {
+    display: flex;
+    gap: var(--spacing-2);
+}
+
+/* Statistics improvements */
+.stat-change {
+    font-size: var(--font-size-sm);
+    color: var(--muted);
+    margin-top: var(--spacing-1);
+}
+
+.stat-payment-methods {
+    display: grid;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-2);
+}
+
+.payment-method-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--font-size-sm);
+}
+
+/* Revenue Chart */
+.revenue-chart {
+    margin-top: var(--spacing-4);
+}
+
+.chart-container {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--spacing-2);
+    height: 200px;
+    padding: var(--spacing-4);
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius);
+}
+
+.chart-bar-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+
+.chart-bar {
+    width: 100%;
+    background-color: var(--mint);
+    border-radius: var(--radius) var(--radius) 0 0;
+    margin-bottom: var(--spacing-2);
+    min-height: 4px;
+    transition: all 0.3s ease;
+}
+
+.chart-label {
+    font-size: var(--font-size-xs);
+    color: var(--muted);
+    margin-bottom: var(--spacing-1);
+}
+
+.chart-value {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text);
+}
+
+@media (max-width: 768px) {
+    .kitchen-stats {
+        flex-direction: column;
+        gap: var(--spacing-2);
+    }
+    
+    .chart-container {
+        height: 150px;
+    }
+}

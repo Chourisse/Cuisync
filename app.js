@@ -12,6 +12,9 @@ class CuisyncApp {
         this.history = []; // Historique des commandes servies
         this.events = []; // Événements spéciaux
         this.clientPreferences = []; // Préférences des clients récurrents
+        this.servers = []; // Liste des serveurs
+        this.notifications = []; // Notifications système
+        this.soundEnabled = true; // Son activé/désactivé
         this.restaurantSettings = {
             name: '',
             phone: '',
@@ -154,6 +157,34 @@ class CuisyncApp {
             clientSearchInput: document.getElementById('client-search-input'),
             clientPreferencesList: document.getElementById('client-preferences-list'),
             
+            // Kitchen
+            kitchenFilterSelect: document.getElementById('kitchen-filter-select'),
+            soundToggleBtn: document.getElementById('sound-toggle-btn'),
+            kitchenPendingCount: document.getElementById('kitchen-pending-count'),
+            kitchenReadyCount: document.getElementById('kitchen-ready-count'),
+            kitchenAvgTime: document.getElementById('kitchen-avg-time'),
+            
+            // Servers
+            serversViewBtn: document.getElementById('servers-view-btn'),
+            serversManagement: document.getElementById('servers-management'),
+            serverForm: document.getElementById('server-form'),
+            serverNameInput: document.getElementById('server-name-input'),
+            serversList: document.getElementById('servers-list'),
+            
+            // Notifications
+            notificationsPanel: document.getElementById('notifications-panel'),
+            notificationsList: document.getElementById('notifications-list'),
+            
+            // Statistics
+            exportReportBtn: document.getElementById('export-report-btn'),
+            statRevenueChange: document.getElementById('stat-revenue-change'),
+            statOrdersChange: document.getElementById('stat-orders-change'),
+            statTablesChange: document.getElementById('stat-tables-change'),
+            statAverageChange: document.getElementById('stat-average-change'),
+            statPeakHour: document.getElementById('stat-peak-hour'),
+            statPaymentMethods: document.getElementById('stat-payment-methods'),
+            revenueChart: document.getElementById('revenue-chart'),
+            
             // Actions
             sendAllBtn: document.getElementById('send-all-btn'),
             exportBtn: document.getElementById('export-csv-btn'),
@@ -192,8 +223,10 @@ class CuisyncApp {
         this.loadHistoryFromStorage();
         this.loadEventsFromStorage();
         this.loadClientPreferencesFromStorage();
+        this.loadServersFromStorage();
         this.loadRestaurantSettingsFromStorage();
         this.setupEventListeners();
+        this.setupNotifications();
         this.refreshCategoryOptions();
         this.refreshDishOptions();
         this.refreshReservationTableSelect();
@@ -205,9 +238,16 @@ class CuisyncApp {
         this.renderEvents();
         this.renderOpeningHours();
         this.renderClientPreferences();
+        this.renderServers();
+        this.renderNotifications();
         this.renderViews();
         this.updateSendAllButton();
         this.updateStatistics();
+        
+        // Update sound button
+        if (this.dom.soundToggleBtn) {
+            this.dom.soundToggleBtn.textContent = this.soundEnabled ? '🔊 Son activé' : '🔇 Son désactivé';
+        }
         
         // Focus first input
         if (this.dom.tableInput) this.dom.tableInput.focus();
@@ -444,6 +484,30 @@ class CuisyncApp {
         if (this.dom.clientSearchInput) {
             this.dom.clientSearchInput.addEventListener('input', () => this.renderClientPreferences());
         }
+        
+        // Kitchen
+        if (this.dom.kitchenFilterSelect) {
+            this.dom.kitchenFilterSelect.addEventListener('change', () => this.renderKitchenView());
+        }
+        if (this.dom.soundToggleBtn) {
+            this.dom.soundToggleBtn.addEventListener('click', () => this.toggleSound());
+        }
+        
+        // Servers
+        if (this.dom.serversViewBtn) {
+            this.dom.serversViewBtn.addEventListener('click', () => this.toggleHostView('servers'));
+        }
+        if (this.dom.serverForm) {
+            this.dom.serverForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.addServer();
+            });
+        }
+        
+        // Statistics
+        if (this.dom.exportReportBtn) {
+            this.dom.exportReportBtn.addEventListener('click', () => this.exportReport());
+        }
         if (this.dom.paymentReceived) {
             this.dom.paymentReceived.addEventListener('input', () => this.updatePaymentChange());
             this.dom.paymentReceived.addEventListener('change', () => this.updatePaymentChange());
@@ -516,6 +580,13 @@ class CuisyncApp {
                 if (this.restaurantSettings) {
                     localStorage.setItem('cuisync-restaurant-settings', JSON.stringify(this.restaurantSettings));
                 }
+                if (this.servers && Array.isArray(this.servers)) {
+                    localStorage.setItem('cuisync-servers', JSON.stringify(this.servers));
+                }
+                if (this.notifications && Array.isArray(this.notifications)) {
+                    localStorage.setItem('cuisync-notifications', JSON.stringify(this.notifications));
+                }
+                localStorage.setItem('cuisync-sound-enabled', JSON.stringify(this.soundEnabled));
             } catch (error) {
                 console.error('Failed to save to localStorage:', error);
                 this.showToast('Erreur de sauvegarde', 'error');
@@ -541,6 +612,11 @@ class CuisyncApp {
             }
             const savedSales = localStorage.getItem('cuisync-sales');
             this.sales = savedSales ? JSON.parse(savedSales) : [];
+            
+            const savedSound = localStorage.getItem('cuisync-sound-enabled');
+            if (savedSound !== null) {
+                this.soundEnabled = JSON.parse(savedSound);
+            }
         } catch (error) {
             console.error('Failed to load from localStorage:', error);
             this.pads = [];
@@ -644,6 +720,99 @@ class CuisyncApp {
         } catch (error) {
             console.error('Failed to load restaurant settings from localStorage:', error);
         }
+    }
+    
+    loadServersFromStorage() {
+        try {
+            const savedServers = localStorage.getItem('cuisync-servers');
+            if (savedServers) {
+                this.servers = JSON.parse(savedServers);
+            } else {
+                this.servers = [];
+            }
+        } catch (error) {
+            console.error('Failed to load servers from localStorage:', error);
+            this.servers = [];
+        }
+    }
+    
+    setupNotifications() {
+        // Check for upcoming reservations every minute
+        setInterval(() => {
+            this.checkUpcomingReservations();
+        }, 60000);
+        
+        // Check immediately
+        this.checkUpcomingReservations();
+    }
+    
+    checkUpcomingReservations() {
+        const now = new Date();
+        const in30Minutes = new Date(now.getTime() + 30 * 60000);
+        
+        const upcoming = this.reservations.filter(r => {
+            if (r.status !== 'pending' && r.status !== 'confirmed') return false;
+            const resDate = new Date(r.date);
+            return resDate >= now && resDate <= in30Minutes;
+        });
+        
+        upcoming.forEach(reservation => {
+            const exists = this.notifications.some(n => n.type === 'reservation' && n.reservationId === reservation.id);
+            if (!exists) {
+                this.addNotification({
+                    type: 'reservation',
+                    title: 'Réservation à venir',
+                    message: `${reservation.name} - ${reservation.covers} couverts à ${new Date(reservation.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+                    reservationId: reservation.id,
+                    priority: 'high',
+                    createdAt: new Date().toISOString()
+                });
+            }
+        });
+        
+        this.renderNotifications();
+    }
+    
+    addNotification(notification) {
+        notification.id = notification.id || this.generateId();
+        this.notifications.unshift(notification);
+        // Keep only last 50 notifications
+        if (this.notifications.length > 50) {
+            this.notifications = this.notifications.slice(0, 50);
+        }
+        this.saveToStorage();
+        
+        if (this.soundEnabled && notification.priority === 'high') {
+            this.playNotificationSound();
+        }
+    }
+    
+    renderNotifications() {
+        if (!this.dom.notificationsList) return;
+        
+        const recent = this.notifications.slice(0, 10);
+        const html = recent.map(notif => {
+            const icon = notif.type === 'reservation' ? '📅' : notif.type === 'order' ? '🍽️' : 'ℹ️';
+            return `
+                <div class="notification-item ${notif.priority || 'normal'}" data-notification-id="${notif.id}">
+                    <div class="notification-icon">${icon}</div>
+                    <div class="notification-content">
+                        <div class="notification-title">${this.escapeHTML(notif.title)}</div>
+                        <div class="notification-message">${this.escapeHTML(notif.message)}</div>
+                        <div class="notification-time">${this.formatDate(notif.createdAt)}</div>
+                    </div>
+                    <button class="btn btn-sm btn-icon" onclick="window.cuisyncApp.dismissNotification('${notif.id}')" title="Fermer">✕</button>
+                </div>
+            `;
+        }).join('');
+        
+        this.dom.notificationsList.innerHTML = html || '<div class="empty-state"><p>Aucune notification</p></div>';
+    }
+    
+    dismissNotification(notificationId) {
+        this.notifications = this.notifications.filter(n => n.id !== notificationId);
+        this.saveToStorage();
+        this.renderNotifications();
     }
     
     initializeDefaultTables() {
@@ -778,6 +947,11 @@ class CuisyncApp {
     }
     
     addItemToPad(tableNum, dish, qty, course, note, extra = {}, tableInfo = {}) {
+        if (!tableNum || !dish || !qty) {
+            this.showToast('Données invalides pour la commande', 'error');
+            return;
+        }
+        
         let pad = this.pads.find(p => p.table === tableNum && p.status === 'open');
         
         if (!pad) {
@@ -797,9 +971,9 @@ class CuisyncApp {
             this.updateTableStatus(tableNum, 'occupied');
         } else {
             // Mettre à jour les infos de table si fournies
-            if (tableInfo.covers !== undefined) pad.covers = tableInfo.covers;
-            if (tableInfo.clientName !== undefined) pad.clientName = tableInfo.clientName;
-            if (tableInfo.tableNotes !== undefined) pad.tableNotes = tableInfo.tableNotes;
+            if (tableInfo.covers !== undefined && tableInfo.covers !== null) pad.covers = tableInfo.covers;
+            if (tableInfo.clientName !== undefined && tableInfo.clientName !== null) pad.clientName = tableInfo.clientName;
+            if (tableInfo.tableNotes !== undefined && tableInfo.tableNotes !== null) pad.tableNotes = tableInfo.tableNotes;
         }
         
         const item = {
@@ -828,10 +1002,12 @@ class CuisyncApp {
 
     recalculateTotal() {
         if (!this.dom.totalInput) return;
-        const qty = parseFloat(this.dom.qtyInput && this.dom.qtyInput.value ? this.dom.qtyInput.value : '0');
-        const price = parseFloat(this.dom.priceInput && this.dom.priceInput.value ? this.dom.priceInput.value : '0');
-        const total = (isNaN(qty) ? 0 : qty) * (isNaN(price) ? 0 : price);
-        this.dom.totalInput.value = total.toFixed(2);
+        const qtyStr = this.dom.qtyInput && this.dom.qtyInput.value ? this.dom.qtyInput.value : '0';
+        const priceStr = this.dom.priceInput && this.dom.priceInput.value ? this.dom.priceInput.value : '0';
+        const qty = parseFloat(qtyStr);
+        const price = parseFloat(priceStr);
+        const total = (isNaN(qty) || qty < 0 ? 0 : qty) * (isNaN(price) || price < 0 ? 0 : price);
+        this.dom.totalInput.value = isNaN(total) ? '0.00' : total.toFixed(2);
     }
 
     // Menu APIs
@@ -1168,8 +1344,8 @@ class CuisyncApp {
    
    renderViews() {
        this.renderServerView();
-       this.renderKitchenView();
-        this.renderHostView();
+       this.renderKitchenView(); // Always update for stats
+       this.renderHostView();
    }
 
     renderMenuList() {
@@ -1262,14 +1438,42 @@ class CuisyncApp {
    
    renderKitchenView() {
        const container = this.dom.kitchenPadsContainer;
-       const pads = this.pads.filter(p => p.status === 'sent' || p.status === 'ready');
+       let pads = this.pads.filter(p => p.status === 'sent' || p.status === 'ready');
+       
+       // Apply filter
+       const filter = this.dom.kitchenFilterSelect ? this.dom.kitchenFilterSelect.value : 'all';
+       if (filter === 'sent') {
+           pads = pads.filter(p => p.status === 'sent');
+       } else if (filter === 'ready') {
+           pads = pads.filter(p => p.status === 'ready');
+       }
+       
+       // Update stats
+       const pending = this.pads.filter(p => p.status === 'sent').length;
+       const ready = this.pads.filter(p => p.status === 'ready').length;
+       if (this.dom.kitchenPendingCount) this.dom.kitchenPendingCount.textContent = pending;
+       if (this.dom.kitchenReadyCount) this.dom.kitchenReadyCount.textContent = ready;
+       
+       // Calculate average time
+       const sentPads = this.pads.filter(p => p.status === 'sent' && p.sentAt);
+       if (sentPads.length > 0 && this.dom.kitchenAvgTime) {
+           const avgTime = sentPads.reduce((sum, pad) => {
+               const sentTime = new Date(pad.sentAt);
+               const now = new Date();
+               return sum + (now - sentTime);
+           }, 0) / sentPads.length;
+           const minutes = Math.floor(avgTime / 60000);
+           this.dom.kitchenAvgTime.textContent = `${minutes} min`;
+       } else if (this.dom.kitchenAvgTime) {
+           this.dom.kitchenAvgTime.textContent = '—';
+       }
        
        if (pads.length === 0) {
            container.innerHTML = '<div class="empty-state"><p>Aucune commande envoyée</p></div>';
            return;
        }
        
-       // Sort by status (sent first, then ready)
+       // Sort by status (sent first, then ready) and time
        pads.sort((a, b) => {
            if (a.status === 'sent' && b.status === 'ready') return -1;
            if (a.status === 'ready' && b.status === 'sent') return 1;
@@ -1294,6 +1498,80 @@ class CuisyncApp {
                }
            });
        });
+   }
+   
+   toggleSound() {
+       this.soundEnabled = !this.soundEnabled;
+       if (this.dom.soundToggleBtn) {
+           this.dom.soundToggleBtn.textContent = this.soundEnabled ? '🔊 Son activé' : '🔇 Son désactivé';
+           this.dom.soundToggleBtn.setAttribute('aria-pressed', this.soundEnabled.toString());
+       }
+       this.saveToStorage();
+   }
+   
+   // Servers Management
+   addServer() {
+       if (!this.dom.serverNameInput) return;
+       const name = this.dom.serverNameInput.value.trim();
+       if (!name) return;
+       
+       const server = {
+           id: this.generateId(),
+           name,
+           active: true,
+           createdAt: new Date().toISOString()
+       };
+       
+       this.servers.push(server);
+       this.saveToStorage();
+       this.renderServers();
+       this.dom.serverForm.reset();
+       this.showToast('Serveur ajouté', 'success');
+   }
+   
+   renderServers() {
+       if (!this.dom.serversList) return;
+       
+       const html = this.servers.map(server => {
+           const serverPads = this.pads.filter(p => p.serverId === server.id && p.status !== 'served');
+           return `
+               <div class="server-card">
+                   <div class="server-header">
+                       <h4>${this.escapeHTML(server.name)}</h4>
+                       <span class="server-status ${server.active ? 'active' : 'inactive'}">${server.active ? 'Actif' : 'Inactif'}</span>
+                   </div>
+                   <div class="server-info">
+                       <div>Commandes en cours: ${serverPads.length}</div>
+                   </div>
+                   <div class="server-actions">
+                       <button class="btn btn-sm btn-secondary" onclick="window.cuisyncApp.toggleServer('${server.id}')">
+                           ${server.active ? 'Désactiver' : 'Activer'}
+                       </button>
+                       <button class="btn btn-sm btn-danger" onclick="window.cuisyncApp.deleteServer('${server.id}')">Supprimer</button>
+                   </div>
+               </div>
+           `;
+       }).join('');
+       
+       this.dom.serversList.innerHTML = html || '<div class="empty-state"><p>Aucun serveur</p></div>';
+   }
+   
+   toggleServer(serverId) {
+       const server = this.servers.find(s => s.id === serverId);
+       if (server) {
+           server.active = !server.active;
+           this.saveToStorage();
+           this.renderServers();
+       }
+   }
+   
+   deleteServer(serverId) {
+       if (confirm('Supprimer ce serveur ?')) {
+           this.servers = this.servers.filter(s => s.id !== serverId);
+           this.saveToStorage();
+           this.renderServers();
+           this.showToast('Serveur supprimé', 'info');
+       }
    }
 
    renderHostView() {
@@ -1341,6 +1619,18 @@ class CuisyncApp {
            'ready': 'Prêt'
        };
        
+       // Calculate elapsed time for kitchen view
+       let elapsedTimeHTML = '';
+       if (view === 'kitchen' && pad.sentAt) {
+           const sentTime = new Date(pad.sentAt);
+           const now = new Date();
+           const elapsed = Math.floor((now - sentTime) / 60000); // minutes
+           const hours = Math.floor(elapsed / 60);
+           const minutes = elapsed % 60;
+           const timeStr = hours > 0 ? `${hours}h${minutes}min` : `${minutes}min`;
+           elapsedTimeHTML = `<div class="pad-timer ${elapsed > 30 ? 'warning' : ''}">⏱️ ${timeStr}</div>`;
+       }
+       
        const itemsHTML = pad.items.map(item => `
            <div class="pad-item">
                <div class="item-details">
@@ -1360,6 +1650,7 @@ class CuisyncApp {
            ${pad.covers ? `<div class="pad-info">Couverts: ${pad.covers}</div>` : ''}
            ${pad.clientName ? `<div class="pad-info">Client: ${this.escapeHTML(pad.clientName)}</div>` : ''}
            ${pad.tableNotes ? `<div class="pad-info pad-notes">Notes: ${this.escapeHTML(pad.tableNotes)}</div>` : ''}
+           ${elapsedTimeHTML}
        `;
        
        let actionsHTML = '';
@@ -1426,28 +1717,41 @@ class CuisyncApp {
     getPadTotal(pad) {
         if (!pad || !Array.isArray(pad.items)) return 0;
         return pad.items.reduce((sum, item) => {
-            const price = typeof item.price === 'number' ? item.price : 0;
-            const qty = typeof item.qty === 'number' ? item.qty : 0;
-            return sum + price * qty;
+            const price = typeof item.price === 'number' && !isNaN(item.price) ? item.price : 0;
+            const qty = typeof item.qty === 'number' && !isNaN(item.qty) && item.qty > 0 ? item.qty : 0;
+            return sum + (price * qty);
         }, 0);
     }
 
     buildReceiptHTML(pad) {
+        if (!pad || !pad.items || !Array.isArray(pad.items)) {
+            return '<html><body><p>Erreur: Commande invalide</p></body></html>';
+        }
+        
+        const restaurantName = this.restaurantSettings.name || 'Restaurant';
+        const restaurantAddress = this.restaurantSettings.address || '';
+        const restaurantPhone = this.restaurantSettings.phone || '';
         const created = this.formatDate(pad.createdAt);
         const now = this.formatDate(new Date().toISOString());
-        const lines = (pad.items || []).map(item => {
-            const unit = typeof item.price === 'number' ? `${item.price.toFixed(2)} €` : '-';
-            const lineTotal = typeof item.price === 'number' ? (item.price * (item.qty || 0)).toFixed(2) + ' €' : '-';
+        
+        const lines = pad.items.map(item => {
+            const unit = typeof item.price === 'number' && !isNaN(item.price) ? `${item.price.toFixed(2)} €` : '-';
+            const qty = typeof item.qty === 'number' && !isNaN(item.qty) && item.qty > 0 ? item.qty : 0;
+            const lineTotal = typeof item.price === 'number' && !isNaN(item.price) ? (item.price * qty).toFixed(2) + ' €' : '-';
             return `
                 <tr>
-                    <td>${(item.qty || 0)} ×</td>
-                    <td>${this.escapeHTML(item.dish)}</td>
+                    <td>${qty} ×</td>
+                    <td>${this.escapeHTML(item.dish)}${item.hasAllergens ? ' ⚠️' : ''}</td>
                     <td class="num">${unit}</td>
                     <td class="num">${lineTotal}</td>
                 </tr>
             `;
         }).join('');
-        const total = this.getPadTotal(pad).toFixed(2) + ' €';
+        
+        const subtotal = this.getPadTotal(pad);
+        const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+        const tax = subtotal * taxRate / 100;
+        const total = subtotal + tax;
 
         return `
             <html>
@@ -1455,32 +1759,45 @@ class CuisyncApp {
                 <meta charset="utf-8" />
                 <title>Ticket Table ${pad.table}</title>
                 <style>
-                    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; }
+                    body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif; margin: 0; padding: 16px; }
                     .ticket { width: 280px; margin: 0 auto; }
+                    .restaurant-name { font-size: 18px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+                    .restaurant-info { font-size: 11px; text-align: center; margin-bottom: 12px; color: #666; }
                     h1 { font-size: 16px; text-align: center; margin: 8px 0; }
                     .meta { font-size: 12px; text-align: center; margin-bottom: 8px; }
-                    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
                     td { padding: 4px 0; }
                     .num { text-align: right; white-space: nowrap; }
-                    .total { border-top: 1px dashed #000; margin-top: 8px; padding-top: 8px; font-weight: 600; }
-                    .footer { text-align: center; font-size: 11px; margin-top: 12px; }
-                    @media print { body { margin: 0; } }
+                    .subtotal { border-top: 1px solid #ddd; padding-top: 8px; margin-top: 8px; }
+                    .tax { font-size: 11px; color: #666; }
+                    .total { border-top: 2px solid #000; margin-top: 8px; padding-top: 8px; font-weight: 700; font-size: 14px; }
+                    .footer { text-align: center; font-size: 11px; margin-top: 16px; color: #666; }
+                    @media print { body { margin: 0; padding: 0; } }
                 </style>
             </head>
             <body>
                 <div class="ticket">
-                    <h1>Cuisync — Hôte</h1>
+                    <div class="restaurant-name">${this.escapeHTML(restaurantName)}</div>
+                    ${restaurantAddress ? `<div class="restaurant-info">${this.escapeHTML(restaurantAddress)}</div>` : ''}
+                    ${restaurantPhone ? `<div class="restaurant-info">Tél: ${this.escapeHTML(restaurantPhone)}</div>` : ''}
                     <div class="meta">
-                        Table ${pad.table}<br/>
-                        Créé: ${created} — Imprimé: ${now}
+                        Table ${pad.table}${pad.covers ? ` — ${pad.covers} couverts` : ''}<br/>
+                        ${pad.clientName ? `Client: ${this.escapeHTML(pad.clientName)}<br/>` : ''}
+                        Créé: ${created}<br/>
+                        Imprimé: ${now}
                     </div>
                     <table>
                         ${lines}
                     </table>
-                    <div class="total">
-                        Total: <span style="float:right">${total}</span>
+                    <div class="subtotal">
+                        Sous-total: <span style="float:right">${subtotal.toFixed(2)} €</span>
                     </div>
-                    <div class="footer">Merci et à bientôt</div>
+                    ${taxRate > 0 ? `<div class="tax">TVA (${taxRate}%): <span style="float:right">${tax.toFixed(2)} €</span></div>` : ''}
+                    <div class="total">
+                        Total: <span style="float:right">${total.toFixed(2)} €</span>
+                    </div>
+                    ${pad.tableNotes ? `<div class="footer" style="margin-top: 8px; text-align: left; font-size: 10px;">Notes: ${this.escapeHTML(pad.tableNotes)}</div>` : ''}
+                    <div class="footer">Merci de votre visite !</div>
                 </div>
                 <script>window.onload = function(){ window.print(); setTimeout(function(){ window.close(); }, 300); }<\/script>
             </body>
@@ -1580,25 +1897,32 @@ class CuisyncApp {
         this.updatePaymentChange();
     }
 
-    updatePaymentChange() {
-        if (!this.currentPaymentPadId) return;
-        const pad = this.pads.find(p => p.id === this.currentPaymentPadId);
-        if (!pad) return;
-        const subtotal = this.getPadTotal(pad);
-        const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
-        const discount = parseFloat(this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0') || 0;
-        const tip = parseFloat(this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0') || 0;
-        const total = Math.max(0, subtotal - discount) + (subtotal * taxRate / 100) + tip;
-        if (!this.dom.paymentMethod || !this.dom.paymentChange) return;
-        if (this.dom.paymentMethod.value !== 'cash') {
-            this.dom.paymentChange.textContent = '0,00 €';
-            return;
-        }
-        const received = parseFloat(this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0');
-        const change = (isNaN(received) ? 0 : received) - total;
-        const display = change >= 0 ? `${change.toFixed(2)} ${this.posSettings?.currency || '€'}` : '—';
-        this.dom.paymentChange.textContent = display;
-    }
+   updatePaymentChange() {
+       if (!this.currentPaymentPadId || !this.dom.paymentChange) return;
+       const pad = this.pads.find(p => p.id === this.currentPaymentPadId);
+       if (!pad) {
+           this.dom.paymentChange.textContent = '0,00 €';
+           return;
+       }
+       const subtotal = this.getPadTotal(pad);
+       const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+       const discountStr = this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0';
+       const tipStr = this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0';
+       const discount = parseFloat(discountStr) || 0;
+       const tip = parseFloat(tipStr) || 0;
+       const total = Math.max(0, Math.max(0, subtotal) - Math.max(0, discount)) + (Math.max(0, subtotal) * Math.max(0, taxRate) / 100) + Math.max(0, tip);
+       
+       if (!this.dom.paymentMethod) return;
+       if (this.dom.paymentMethod.value !== 'cash') {
+           this.dom.paymentChange.textContent = '0,00 €';
+           return;
+       }
+       const receivedStr = this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0';
+       const received = parseFloat(receivedStr) || 0;
+       const change = Math.max(0, received) - total;
+       const display = change >= 0 ? `${change.toFixed(2)} ${this.posSettings?.currency || '€'}` : '—';
+       this.dom.paymentChange.textContent = display;
+   }
 
     confirmPayment() {
         if (!this.currentPaymentPadId) return;
@@ -1728,6 +2052,8 @@ class CuisyncApp {
    }
    
    playNotificationSound() {
+       if (!this.soundEnabled) return;
+       
        try {
            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
            const oscillator = audioContext.createOscillator();
@@ -2085,6 +2411,116 @@ class CuisyncApp {
                `).join('');
            }
        }
+       
+       // Peak hour
+       const hourCounts = {};
+       filteredSales.forEach(s => {
+           const hour = new Date(s.createdAt).getHours();
+           hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+       });
+       const peakHour = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0];
+       if (this.dom.statPeakHour && peakHour) {
+           this.dom.statPeakHour.textContent = `${peakHour[0]}h (${peakHour[1]} commandes)`;
+       }
+       
+       // Payment methods
+       const paymentCounts = {};
+       filteredSales.forEach(s => {
+           paymentCounts[s.method] = (paymentCounts[s.method] || 0) + 1;
+       });
+       if (this.dom.statPaymentMethods) {
+           const methods = Object.entries(paymentCounts)
+               .sort((a, b) => b[1] - a[1])
+               .map(([method, count]) => {
+                   const methodNames = {
+                       'cash': 'Espèces',
+                       'card': 'Carte',
+                       'cheque': 'Chèque',
+                       'voucher': 'Bon',
+                       'split': 'Partagé',
+                       'other': 'Autre'
+                   };
+                   return `<div class="payment-method-item"><span>${methodNames[method] || method}:</span><strong>${count}</strong></div>`;
+               }).join('');
+           this.dom.statPaymentMethods.innerHTML = methods || '<div class="empty-state"><p>Aucune donnée</p></div>';
+       }
+       
+       // Revenue chart (simple bar chart)
+       if (this.dom.revenueChart && period !== 'all') {
+           const days = [];
+           const revenues = [];
+           const today = new Date();
+           
+           for (let i = 6; i >= 0; i--) {
+               const date = new Date(today);
+               date.setDate(date.getDate() - i);
+               const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+               const dayEnd = new Date(dayStart);
+               dayEnd.setHours(23, 59, 59, 999);
+               
+               const daySales = this.sales.filter(s => {
+                   const saleDate = new Date(s.createdAt);
+                   return saleDate >= dayStart && saleDate <= dayEnd;
+               });
+               
+               const dayRevenue = daySales.reduce((sum, s) => sum + (s.total || 0), 0);
+               days.push(date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }));
+               revenues.push(dayRevenue);
+           }
+           
+           const maxRevenue = Math.max(...revenues, 1);
+           const chartHTML = `
+               <div class="chart-container">
+                   ${revenues.map((rev, i) => `
+                       <div class="chart-bar-container">
+                           <div class="chart-bar" style="height: ${(rev / maxRevenue) * 100}%"></div>
+                           <div class="chart-label">${days[i]}</div>
+                           <div class="chart-value">${rev.toFixed(0)}€</div>
+                       </div>
+                   `).join('')}
+               </div>
+           `;
+           this.dom.revenueChart.innerHTML = chartHTML;
+       }
+   }
+   
+   exportReport() {
+       const period = this.dom.statsPeriodSelect ? this.dom.statsPeriodSelect.value : 'today';
+       const now = new Date();
+       let startDate;
+       
+       switch (period) {
+           case 'today':
+               startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+               break;
+           case 'week':
+               startDate = new Date(now);
+               startDate.setDate(now.getDate() - 7);
+               break;
+           case 'month':
+               startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+               break;
+           default:
+               startDate = new Date(0);
+       }
+       
+       const filteredSales = this.sales.filter(s => new Date(s.createdAt) >= startDate);
+       
+       const report = {
+           period: period,
+           date: now.toISOString(),
+           revenue: filteredSales.reduce((sum, s) => sum + (s.total || 0), 0),
+           orders: filteredSales.length,
+           tables: new Set(filteredSales.map(s => s.table)).size,
+           average: filteredSales.length > 0 ? filteredSales.reduce((sum, s) => sum + (s.total || 0), 0) / filteredSales.length : 0,
+           sales: filteredSales
+       };
+       
+       const content = JSON.stringify(report, null, 2);
+       const timestamp = new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-');
+       const filename = `cuisync-rapport-${period}-${timestamp}.json`;
+       this.downloadFile(content, filename, 'application/json');
+       this.showToast('Rapport exporté', 'success');
    }
    
    // History
@@ -2147,12 +2583,14 @@ class CuisyncApp {
        const reservationsMgmt = document.getElementById('reservations-management');
        const statisticsView = this.dom.statisticsView;
        const historySection = this.dom.historySection;
+       const serversMgmt = this.dom.serversManagement;
        
        // Hide all
        if (tablesMgmt) tablesMgmt.classList.add('hidden');
        if (reservationsMgmt) reservationsMgmt.classList.add('hidden');
        if (statisticsView) statisticsView.classList.add('hidden');
        if (historySection) historySection.classList.add('hidden');
+       if (serversMgmt) serversMgmt.classList.add('hidden');
        
        // Show selected
        switch (view) {
@@ -2166,6 +2604,12 @@ class CuisyncApp {
                if (statisticsView) {
                    statisticsView.classList.remove('hidden');
                    this.updateStatistics();
+               }
+               break;
+           case 'servers':
+               if (serversMgmt) {
+                   serversMgmt.classList.remove('hidden');
+                   this.renderServers();
                }
                break;
        }

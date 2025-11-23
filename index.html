@@ -142,6 +142,28 @@
                         <button id="compact-mode-btn" class="btn btn-outline" aria-pressed="false">
                             Mode compact
                         </button>
+                        <button id="sound-toggle-btn" class="btn btn-outline" aria-pressed="true">
+                            🔊 Son activé
+                        </button>
+                        <select id="kitchen-filter-select" class="kitchen-filter">
+                            <option value="all">Toutes les commandes</option>
+                            <option value="sent">En attente</option>
+                            <option value="ready">Prêtes</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="kitchen-stats" class="kitchen-stats">
+                    <div class="kitchen-stat-item">
+                        <span class="stat-label">En attente:</span>
+                        <span class="stat-value" id="kitchen-pending-count">0</span>
+                    </div>
+                    <div class="kitchen-stat-item">
+                        <span class="stat-label">Prêtes:</span>
+                        <span class="stat-value" id="kitchen-ready-count">0</span>
+                    </div>
+                    <div class="kitchen-stat-item">
+                        <span class="stat-label">Temps moyen:</span>
+                        <span class="stat-value" id="kitchen-avg-time">—</span>
                     </div>
                 </div>
                 <div id="kitchen-pads-container" class="pads-container kitchen-pads">
@@ -161,8 +183,31 @@
                         <button id="tables-view-btn" class="btn btn-outline">Vue tables</button>
                         <button id="reservations-view-btn" class="btn btn-outline">Réservations</button>
                         <button id="stats-view-btn" class="btn btn-outline">Statistiques</button>
+                        <button id="servers-view-btn" class="btn btn-outline">Serveurs</button>
                         <button id="export-csv-btn" class="btn btn-outline">Exporter CSV</button>
                         <button id="export-sales-btn" class="btn btn-outline">Exporter ventes</button>
+                    </div>
+                </div>
+                
+                <!-- Notifications Panel -->
+                <div id="notifications-panel" class="menu-section">
+                    <h2>Notifications</h2>
+                    <div id="notifications-list" class="notifications-list">
+                        <!-- Notifications will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- Servers Management -->
+                <div id="servers-management" class="menu-section hidden">
+                    <h2>Gestion des serveurs</h2>
+                    <form id="server-form" class="inline-form" autocomplete="off">
+                        <div class="inline-row">
+                            <input type="text" id="server-name-input" placeholder="Nom du serveur" required>
+                            <button type="submit" class="btn btn-primary">Ajouter serveur</button>
+                        </div>
+                    </form>
+                    <div id="servers-list" class="servers-list">
+                        <!-- Servers will be rendered here -->
                     </div>
                 </div>
                 
@@ -255,29 +300,50 @@
                             <option value="month">Ce mois</option>
                             <option value="all">Tout</option>
                         </select>
+                        <button id="export-report-btn" class="btn btn-secondary">Exporter rapport</button>
                     </div>
                     <div class="stats-grid">
                         <div class="stat-card">
                             <h3>Chiffre d'affaires</h3>
                             <div class="stat-value" id="stat-revenue">0,00 €</div>
+                            <div class="stat-change" id="stat-revenue-change">—</div>
                         </div>
                         <div class="stat-card">
                             <h3>Nombre de commandes</h3>
                             <div class="stat-value" id="stat-orders">0</div>
+                            <div class="stat-change" id="stat-orders-change">—</div>
                         </div>
                         <div class="stat-card">
                             <h3>Tables servies</h3>
                             <div class="stat-value" id="stat-tables">0</div>
+                            <div class="stat-change" id="stat-tables-change">—</div>
                         </div>
                         <div class="stat-card">
                             <h3>Panier moyen</h3>
                             <div class="stat-value" id="stat-average">0,00 €</div>
+                            <div class="stat-change" id="stat-average-change">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Heure de pointe</h3>
+                            <div class="stat-value" id="stat-peak-hour">—</div>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Méthode de paiement</h3>
+                            <div id="stat-payment-methods" class="stat-payment-methods">
+                                <!-- Payment methods will be rendered here -->
+                            </div>
                         </div>
                     </div>
                     <div class="menu-section" style="margin-top: 2rem;">
                         <h3>Plats les plus vendus</h3>
                         <div id="top-dishes-list" class="top-dishes-list">
                             <!-- Top dishes will be rendered here -->
+                        </div>
+                    </div>
+                    <div class="menu-section" style="margin-top: 2rem;">
+                        <h3>Revenus par jour</h3>
+                        <div id="revenue-chart" class="revenue-chart">
+                            <!-- Chart will be rendered here -->
                         </div>
                     </div>
                 </div>
