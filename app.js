@@ -33,7 +33,6 @@ class CuisyncApp {
         this.currentView = 'server';
         this.currentReservationDate = new Date();
         this.undoStack = [];
-        this.isCompactMode = false;
         this.isFloorPlanView = false;
         this.debounceTimer = null;
         this.maxTables = 20; // Nombre maximum de tables par défaut
@@ -91,6 +90,13 @@ class CuisyncApp {
             tablesViewBtn: document.getElementById('tables-view-btn'),
             reservationsViewBtn: document.getElementById('reservations-view-btn'),
             statsViewBtn: document.getElementById('stats-view-btn'),
+            menuViewBtn: document.getElementById('menu-view-btn'),
+            clientsViewBtn: document.getElementById('clients-view-btn'),
+            historyViewBtn: document.getElementById('history-view-btn'),
+            settingsViewBtn: document.getElementById('settings-view-btn'),
+            mapViewBtn: document.getElementById('map-view-btn'),
+            mapView: document.getElementById('map-management'),
+            restaurantMap: document.getElementById('restaurant-map'),
             reservationForm: document.getElementById('reservation-form'),
             reservationNameInput: document.getElementById('reservation-name-input'),
             reservationCoversInput: document.getElementById('reservation-covers-input'),
@@ -118,6 +124,15 @@ class CuisyncApp {
             // Payment split
             splitPaymentRow: document.getElementById('split-payment-row'),
             splitAmount: document.getElementById('split-amount'),
+            paymentTotalDue: document.getElementById('payment-total-due'),
+            paymentPaid: document.getElementById('payment-paid'),
+            paymentRemaining: document.getElementById('payment-remaining'),
+            paymentExistingPayments: document.getElementById('payment-existing-payments'),
+            paymentSplitAmount: document.getElementById('payment-split-amount'),
+            paymentSplitPeople: document.getElementById('payment-split-people'),
+            splitByPersonBtn: document.getElementById('split-by-person-btn'),
+            splitByCoversBtn: document.getElementById('split-by-covers-btn'),
+            splitCustomBtn: document.getElementById('split-custom-btn'),
             
             // Reservations calendar
             reservationCalendar: document.getElementById('reservation-calendar'),
@@ -186,8 +201,9 @@ class CuisyncApp {
             kitchenAvgTime: document.getElementById('kitchen-avg-time'),
             
             // Servers
-            serversViewBtn: document.getElementById('servers-view-btn'),
-            serversManagement: document.getElementById('servers-management'),
+            menuManagement: document.getElementById('menu-management'),
+            clientsManagement: document.getElementById('clients-management'),
+            settingsManagement: document.getElementById('settings-management'),
             serverForm: document.getElementById('server-form'),
             serverNameInput: document.getElementById('server-name-input'),
             serversList: document.getElementById('servers-list'),
@@ -209,7 +225,6 @@ class CuisyncApp {
             // Actions
             sendAllBtn: document.getElementById('send-all-btn'),
             exportBtn: document.getElementById('export-csv-btn'),
-            compactModeBtn: document.getElementById('compact-mode-btn'),
             exportSalesBtn: document.getElementById('export-sales-btn'),
             // Payment panel
             paymentPanel: document.getElementById('payment-panel'),
@@ -228,7 +243,6 @@ class CuisyncApp {
             // Containers
             serverPadsContainer: document.getElementById('server-pads-container'),
             kitchenPadsContainer: document.getElementById('kitchen-pads-container'),
-            hostPadsContainer: document.getElementById('host-pads-container'),
             toastContainer: document.getElementById('toast-container'),
             undoNotification: document.getElementById('undo-notification'),
             undoBtn: document.getElementById('undo-btn'),
@@ -382,7 +396,6 @@ class CuisyncApp {
         // Actions
         this.dom.sendAllBtn.addEventListener('click', () => this.sendAllOpenPads());
         this.dom.exportBtn.addEventListener('click', () => this.exportToCSV());
-        this.dom.compactModeBtn.addEventListener('click', () => this.toggleCompactMode());
         if (this.dom.exportSalesBtn) {
             this.dom.exportSalesBtn.addEventListener('click', () => this.exportSalesCSV());
         }
@@ -421,6 +434,21 @@ class CuisyncApp {
         }
         if (this.dom.statsViewBtn) {
             this.dom.statsViewBtn.addEventListener('click', () => this.toggleHostView('stats'));
+        }
+        if (this.dom.menuViewBtn) {
+            this.dom.menuViewBtn.addEventListener('click', () => this.toggleHostView('menu'));
+        }
+        if (this.dom.clientsViewBtn) {
+            this.dom.clientsViewBtn.addEventListener('click', () => this.toggleHostView('clients'));
+        }
+        if (this.dom.historyViewBtn) {
+            this.dom.historyViewBtn.addEventListener('click', () => this.toggleHostView('history'));
+        }
+        if (this.dom.settingsViewBtn) {
+            this.dom.settingsViewBtn.addEventListener('click', () => this.toggleHostView('settings'));
+        }
+        if (this.dom.mapViewBtn) {
+            this.dom.mapViewBtn.addEventListener('click', () => this.toggleHostView('map'));
         }
         
         // Reservations
@@ -530,6 +558,23 @@ class CuisyncApp {
             this.dom.paymentCloseBtn.addEventListener('click', () => this.closePaymentPanel());
         }
         
+        // Payment split options
+        if (this.dom.splitByPersonBtn) {
+            this.dom.splitByPersonBtn.addEventListener('click', () => this.splitByPerson());
+        }
+        if (this.dom.splitByCoversBtn) {
+            this.dom.splitByCoversBtn.addEventListener('click', () => this.splitByCovers());
+        }
+        if (this.dom.splitCustomBtn) {
+            this.dom.splitCustomBtn.addEventListener('click', () => this.splitCustom());
+        }
+        if (this.dom.paymentSplitAmount) {
+            this.dom.paymentSplitAmount.addEventListener('input', () => this.updatePaymentChange());
+        }
+        if (this.dom.paymentReceived) {
+            this.dom.paymentReceived.addEventListener('input', () => this.updatePaymentChange());
+        }
+        
         // History
         if (this.dom.clearHistoryBtn) {
             this.dom.clearHistoryBtn.addEventListener('click', () => this.clearHistory());
@@ -557,8 +602,9 @@ class CuisyncApp {
         }
         
         // Servers
-        if (this.dom.serversViewBtn) {
-            this.dom.serversViewBtn.addEventListener('click', () => this.toggleHostView('servers'));
+        // Set initial active tab for host view
+        if (this.dom.tablesViewBtn) {
+            this.dom.tablesViewBtn.classList.add('active');
         }
         if (this.dom.serverForm) {
             this.dom.serverForm.addEventListener('submit', (e) => {
@@ -617,7 +663,6 @@ class CuisyncApp {
             try {
                 localStorage.setItem('cuisync-pads', JSON.stringify(this.pads));
                 localStorage.setItem('cuisync-settings', JSON.stringify({
-                    compactMode: this.isCompactMode,
                     pos: this.posSettings || null,
                     maxTables: this.maxTables
                 }));
@@ -669,7 +714,6 @@ class CuisyncApp {
             const savedSettings = localStorage.getItem('cuisync-settings');
             if (savedSettings) {
                 const settings = JSON.parse(savedSettings);
-                this.isCompactMode = settings.compactMode || false;
                 this.posSettings = settings.pos || { taxRatePct: 10, currency: '€', defaultTipPct: 0, printAfterPay: false };
                 this.maxTables = settings.maxTables || 20;
             }
@@ -1063,6 +1107,7 @@ class CuisyncApp {
                 covers: tableInfo.covers || null,
                 clientName: tableInfo.clientName || null,
                 tableNotes: tableInfo.tableNotes || null,
+                partialPayments: [], // Paiements partiels
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
             };
@@ -1428,19 +1473,6 @@ class CuisyncApp {
        this.showToast('Action annulée', 'info');
    }
    
-   toggleCompactMode() {
-       this.isCompactMode = !this.isCompactMode;
-       this.dom.compactModeBtn.setAttribute('aria-pressed', this.isCompactMode.toString());
-       this.dom.compactModeBtn.textContent = this.isCompactMode ? 'Mode normal' : 'Mode compact';
-       
-       if (this.isCompactMode) {
-           this.dom.kitchenPadsContainer.classList.add('compact');
-       } else {
-           this.dom.kitchenPadsContainer.classList.remove('compact');
-       }
-       
-       this.saveToStorage();
-   }
    
    renderViews() {
        this.renderServerView();
@@ -1477,7 +1509,7 @@ class CuisyncApp {
             const chips = dishes.length ? dishes.map(d => `
                 <span class=\"menu-chip ${d.availability === 'unavailable' ? 'unavailable' : ''}\">
                     <span>${this.escapeHTML(d.name)} — ${Number(d.price).toFixed(2)} € ${d.availability === 'unavailable' ? '(Indisponible)' : ''}</span>
-                    ${d.allergens ? `<span class=\"allergen-badge\" title=\"Allergènes: ${this.escapeHTML(d.allergens)}\">⚠️</span>` : ''}
+                    ${d.allergens ? `<span class=\"allergen-badge\" title=\"Allergènes: ${this.escapeHTML(d.allergens)}\">Allergènes</span>` : ''}
                     <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"edit-dish\" data-category-id=\"${cat.id}\" data-dish-id=\"${d.id}\" title=\"Modifier le plat\">✎</button>
                     <button type=\"button\" class=\"btn btn-secondary btn-icon\" data-action=\"delete-dish\" data-category-id=\"${cat.id}\" data-dish-id=\"${d.id}\" title=\"Supprimer le plat\">✕</button>
                 </span>
@@ -1545,6 +1577,9 @@ class CuisyncApp {
        if (statusFilter !== 'all') {
            pads = pads.filter(p => p.status === statusFilter);
        }
+       
+       // Update count
+       this.updatePadsCount();
        
        if (pads.length === 0) {
            container.innerHTML = '<div class="empty-state"><p>Aucune commande en cours</p></div>';
@@ -1778,7 +1813,7 @@ class CuisyncApp {
        const itemsHTML = pad.items.map(item => `
            <div class="pad-item">
                <div class="item-details">
-                   <h4>${this.escapeHTML(item.dish)} ${item.hasAllergens ? '⚠️' : ''}</h4>
+                   <h4>${this.escapeHTML(item.dish)}</h4>
                    <div class="item-meta">
                        <span>${item.course}</span>
                        ${item.category ? `<span>•</span><span>${this.escapeHTML(item.category)}</span>` : ''}
@@ -1886,7 +1921,7 @@ class CuisyncApp {
             return `
                 <tr>
                     <td>${qty} ×</td>
-                    <td>${this.escapeHTML(item.dish)}${item.hasAllergens ? ' ⚠️' : ''}</td>
+                    <td>${this.escapeHTML(item.dish)}</td>
                     <td class="num">${unit}</td>
                     <td class="num">${lineTotal}</td>
                 </tr>
@@ -2015,8 +2050,15 @@ class CuisyncApp {
         this.currentPaymentPadId = padId;
         const pad = this.pads.find(p => p.id === padId);
         if (!pad || !this.dom.paymentPanel) return;
+        
+        // Initialize partialPayments if not exists
+        if (!pad.partialPayments) pad.partialPayments = [];
+        
         const subtotal = this.getPadTotal(pad);
         const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
+        const totalDue = subtotal + (subtotal * taxRate / 100);
+        const paidAmount = this.getPaidAmount(pad);
+        const remaining = Math.max(0, totalDue - paidAmount);
         
         // Render pad summary
         if (this.dom.paymentPadSummary) {
@@ -2035,20 +2077,151 @@ class CuisyncApp {
             `;
         }
         
-        if (this.dom.paymentSubtotal) this.dom.paymentSubtotal.textContent = `${subtotal.toFixed(2)} ${this.posSettings?.currency || '€'}`;
-        if (this.dom.paymentTax) this.dom.paymentTax.textContent = `${(subtotal * taxRate / 100).toFixed(2)} ${this.posSettings?.currency || '€'}`;
-        if (this.dom.paymentTotal) this.dom.paymentTotal.textContent = `${(subtotal + (subtotal * taxRate / 100)).toFixed(2)} ${this.posSettings?.currency || '€'}`;
+        // Render existing payments
+        this.renderExistingPayments(pad);
+        
+        // Update totals
+        if (this.dom.paymentTotalDue) this.dom.paymentTotalDue.textContent = `${totalDue.toFixed(2)} ${this.posSettings?.currency || '€'}`;
+        if (this.dom.paymentPaid) this.dom.paymentPaid.textContent = `${paidAmount.toFixed(2)} ${this.posSettings?.currency || '€'}`;
+        if (this.dom.paymentRemaining) {
+            this.dom.paymentRemaining.textContent = `${remaining.toFixed(2)} ${this.posSettings?.currency || '€'}`;
+            this.dom.paymentRemaining.className = remaining > 0 ? 'payment-remaining' : 'payment-remaining payment-paid-full';
+        }
+        
+        // Reset form
         if (this.dom.paymentMethod) this.dom.paymentMethod.value = 'cash';
         if (this.dom.paymentReceived) this.dom.paymentReceived.value = '';
         if (this.dom.paymentChange) this.dom.paymentChange.textContent = '0,00 €';
         if (this.dom.paymentDiscount) this.dom.paymentDiscount.value = '';
-        if (this.dom.paymentTip) this.dom.paymentTip.value = this.posSettings ? String((subtotal * (this.posSettings.defaultTipPct || 0) / 100).toFixed(2)) : '';
+        if (this.dom.paymentTip) this.dom.paymentTip.value = '';
+        if (this.dom.paymentSplitAmount) this.dom.paymentSplitAmount.value = '';
+        if (this.dom.paymentSplitPeople) this.dom.paymentSplitPeople.value = '';
+        
+        // Set default split amount to remaining
+        if (this.dom.paymentSplitAmount && remaining > 0) {
+            this.dom.paymentSplitAmount.value = remaining.toFixed(2);
+        }
+        
         this.updatePaymentUI();
         this.dom.paymentPanel.classList.remove('hidden');
         
-        // Focus on payment received if cash
-        if (this.dom.paymentMethod && this.dom.paymentMethod.value === 'cash' && this.dom.paymentReceived) {
-            setTimeout(() => this.dom.paymentReceived.focus(), 100);
+        // Focus on split amount
+        if (this.dom.paymentSplitAmount) {
+            setTimeout(() => this.dom.paymentSplitAmount.focus(), 100);
+        }
+    }
+    
+    getPaidAmount(pad) {
+        if (!pad.partialPayments || !Array.isArray(pad.partialPayments)) return 0;
+        return pad.partialPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    }
+    
+    renderExistingPayments(pad) {
+        if (!this.dom.paymentExistingPayments) return;
+        
+        if (!pad.partialPayments || pad.partialPayments.length === 0) {
+            this.dom.paymentExistingPayments.innerHTML = '';
+            return;
+        }
+        
+        const paymentsHTML = pad.partialPayments.map((payment, index) => {
+            const methodNames = {
+                cash: 'Espèces',
+                card: 'Carte bancaire',
+                cheque: 'Chèque',
+                voucher: 'Bon d\'achat',
+                other: 'Autre'
+            };
+            return `
+                <div class="payment-existing-item">
+                    <div class="payment-existing-info">
+                        <span class="payment-existing-amount">${payment.amount.toFixed(2)} €</span>
+                        <span class="payment-existing-method">${methodNames[payment.method] || 'Autre'}</span>
+                        ${payment.people ? `<span class="payment-existing-people">(${payment.people} personne${payment.people > 1 ? 's' : ''})</span>` : ''}
+                        <span class="payment-existing-time">${this.formatTime(payment.createdAt)}</span>
+                    </div>
+                    <button class="btn btn-icon btn-sm" data-action="remove-payment" data-index="${index}" title="Supprimer">✕</button>
+                </div>
+            `;
+        }).join('');
+        
+        this.dom.paymentExistingPayments.innerHTML = `
+            <div class="payment-existing-header">Paiements effectués</div>
+            <div class="payment-existing-list">${paymentsHTML}</div>
+        `;
+        
+        // Attach remove handlers
+        this.dom.paymentExistingPayments.querySelectorAll('[data-action="remove-payment"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const index = parseInt(e.target.dataset.index);
+                this.removePartialPayment(pad.id, index);
+            });
+        });
+    }
+    
+    formatTime(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    removePartialPayment(padId, index) {
+        const pad = this.pads.find(p => p.id === padId);
+        if (!pad || !pad.partialPayments || index < 0 || index >= pad.partialPayments.length) return;
+        
+        if (confirm('Supprimer ce paiement ?')) {
+            pad.partialPayments.splice(index, 1);
+            pad.updatedAt = new Date().toISOString();
+            this.saveToStorage();
+            this.openPaymentPanel(padId); // Refresh panel
+            this.showToast('Paiement supprimé', 'info');
+        }
+    }
+    
+    splitByPerson() {
+        const pad = this.pads.find(p => p.id === this.currentPaymentPadId);
+        if (!pad || !this.dom.paymentSplitAmount) return;
+        
+        const totalDue = this.getPadTotal(pad) + (this.getPadTotal(pad) * (this.posSettings?.taxRatePct || 0) / 100);
+        const paidAmount = this.getPaidAmount(pad);
+        const remaining = Math.max(0, totalDue - paidAmount);
+        
+        const people = pad.covers || 1;
+        const perPerson = remaining / people;
+        
+        if (this.dom.paymentSplitAmount) {
+            this.dom.paymentSplitAmount.value = perPerson.toFixed(2);
+        }
+        if (this.dom.paymentSplitPeople) {
+            this.dom.paymentSplitPeople.value = '1';
+        }
+        
+        this.updatePaymentChange();
+    }
+    
+    splitByCovers() {
+        const pad = this.pads.find(p => p.id === this.currentPaymentPadId);
+        if (!pad || !this.dom.paymentSplitAmount) return;
+        
+        const totalDue = this.getPadTotal(pad) + (this.getPadTotal(pad) * (this.posSettings?.taxRatePct || 0) / 100);
+        const paidAmount = this.getPaidAmount(pad);
+        const remaining = Math.max(0, totalDue - paidAmount);
+        
+        const covers = pad.covers || 1;
+        const perCover = remaining / covers;
+        
+        if (this.dom.paymentSplitAmount) {
+            this.dom.paymentSplitAmount.value = perCover.toFixed(2);
+        }
+        if (this.dom.paymentSplitPeople) {
+            this.dom.paymentSplitPeople.value = String(covers);
+        }
+        
+        this.updatePaymentChange();
+    }
+    
+    splitCustom() {
+        if (this.dom.paymentSplitAmount) {
+            this.dom.paymentSplitAmount.focus();
         }
     }
 
@@ -2072,13 +2245,10 @@ class CuisyncApp {
            this.dom.paymentChange.textContent = '0,00 €';
            return;
        }
-       const subtotal = this.getPadTotal(pad);
-       const taxRate = this.posSettings ? (this.posSettings.taxRatePct || 0) : 0;
-       const discountStr = this.dom.paymentDiscount && this.dom.paymentDiscount.value ? this.dom.paymentDiscount.value : '0';
-       const tipStr = this.dom.paymentTip && this.dom.paymentTip.value ? this.dom.paymentTip.value : '0';
-       const discount = parseFloat(discountStr) || 0;
-       const tip = parseFloat(tipStr) || 0;
-       const total = Math.max(0, Math.max(0, subtotal) - Math.max(0, discount)) + (Math.max(0, subtotal) * Math.max(0, taxRate) / 100) + Math.max(0, tip);
+       
+       // Get the amount for this payment
+       const splitAmountStr = this.dom.paymentSplitAmount && this.dom.paymentSplitAmount.value ? this.dom.paymentSplitAmount.value : '0';
+       const splitAmount = parseFloat(splitAmountStr) || 0;
        
        if (!this.dom.paymentMethod) return;
        if (this.dom.paymentMethod.value !== 'cash') {
@@ -2087,7 +2257,7 @@ class CuisyncApp {
        }
        const receivedStr = this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0';
        const received = parseFloat(receivedStr) || 0;
-       const change = Math.max(0, received) - total;
+       const change = Math.max(0, received) - splitAmount;
        const display = change >= 0 ? `${change.toFixed(2)} ${this.posSettings?.currency || '€'}` : '—';
        this.dom.paymentChange.textContent = display;
    }
@@ -2300,6 +2470,7 @@ class CuisyncApp {
                    </div>
                    <div class="table-actions">
                        <button class="btn btn-sm btn-secondary" onclick="window.cuisyncApp.editTable(${table.number})">Modifier</button>
+                       <button class="btn btn-sm btn-danger delete-table-btn" data-table-num="${table.number}" title="Supprimer la table">🗑️</button>
                        <select class="table-status-select" onchange="window.cuisyncApp.changeTableStatus(${table.number}, this.value)">
                            <option value="free" ${table.status === 'free' ? 'selected' : ''}>Libre</option>
                            <option value="occupied" ${table.status === 'occupied' ? 'selected' : ''}>Occupée</option>
@@ -2311,6 +2482,19 @@ class CuisyncApp {
            `;
        }).join('');
        this.dom.tablesGrid.innerHTML = html || '<div class="empty-state"><p>Aucune table configurée</p></div>';
+       
+       // Attacher les event listeners pour les boutons de suppression
+       const deleteButtons = this.dom.tablesGrid.querySelectorAll('.delete-table-btn');
+       deleteButtons.forEach(btn => {
+           btn.addEventListener('click', (e) => {
+               e.preventDefault();
+               e.stopPropagation();
+               const tableNum = parseInt(btn.dataset.tableNum);
+               if (!isNaN(tableNum)) {
+                   this.deleteTable(tableNum);
+               }
+           });
+       });
    }
    
    editTable(tableNum) {
@@ -2326,6 +2510,182 @@ class CuisyncApp {
        }
        this.saveToStorage();
        this.renderTablesGrid();
+       this.renderFloorPlan();
+   }
+   
+   deleteTable(tableNum) {
+       // Convertir en nombre si c'est une string
+       const num = typeof tableNum === 'string' ? parseInt(tableNum) : tableNum;
+       const table = this.tables.find(t => t.number === num);
+       if (!table) {
+           console.error('Table non trouvée:', num);
+           this.showToast('Table non trouvée', 'error');
+           return;
+       }
+       
+       // Vérifier si la table est occupée
+       const pad = this.pads.find(p => p.table === num && p.status !== 'served');
+       if (pad) {
+           this.showToast('Impossible de supprimer une table occupée', 'error');
+           return;
+       }
+       
+       // Vérifier s'il y a des réservations pour cette table
+       const hasReservations = this.reservations.some(r => 
+           r.tableNum === num && 
+           r.status !== 'cancelled' && 
+           r.status !== 'completed'
+       );
+       
+       if (hasReservations) {
+           if (!confirm(`La table ${num} a des réservations actives. Voulez-vous vraiment la supprimer ?`)) {
+               return;
+           }
+       } else {
+           if (!confirm(`Êtes-vous sûr de vouloir supprimer la table ${num} ?`)) {
+               return;
+           }
+       }
+       
+       // Supprimer la table
+       this.tables = this.tables.filter(t => t.number !== num);
+       this.saveToStorage();
+       this.renderTablesGrid();
+       if (this.dom.floorPlan) {
+           this.renderFloorPlan();
+       }
+       if (this.dom.mapView && typeof this.renderMapView === 'function') {
+           this.renderMapView();
+       }
+       this.showToast(`Table ${num} supprimée`, 'success');
+   }
+   
+   renderMapView() {
+       if (!this.dom.restaurantMap) return;
+       
+       // Créer une visualisation 2D interactive avec drag & drop
+       const html = `
+           <div class="map-2d-container">
+               <div class="map-2d-canvas" id="map-2d-canvas">
+                   ${this.tables.map(table => {
+                       const pad = this.pads.find(p => p.table === table.number && p.status !== 'served');
+                       const x = table.x !== undefined ? table.x : Math.random() * 70 + 10; // Position par défaut si non définie
+                       const y = table.y !== undefined ? table.y : Math.random() * 70 + 10;
+                       const statusClass = table.status || 'free';
+                       
+                       return `
+                           <div class="map-2d-table ${statusClass}" 
+                                data-table-num="${table.number}"
+                                style="left: ${x}%; top: ${y}%;">
+                               <div class="map-2d-table-number">${table.number}</div>
+                               <div class="map-2d-table-capacity">${table.capacity}</div>
+                               ${pad ? `<div class="map-2d-table-client">${pad.clientName || ''}</div>` : ''}
+                           </div>
+                       `;
+                   }).join('')}
+               </div>
+               <div class="map-2d-controls">
+                   <button class="btn btn-sm btn-secondary" onclick="window.cuisyncApp.resetMapPositions()">Réinitialiser positions</button>
+                   <button class="btn btn-sm btn-primary" onclick="window.cuisyncApp.saveMapPositions()">Enregistrer positions</button>
+               </div>
+           </div>
+       `;
+       
+       this.dom.restaurantMap.innerHTML = html || '<div class="empty-state"><p>Aucune table configurée</p></div>';
+       
+       // Initialiser le drag & drop
+       this.initMapDragAndDrop();
+   }
+   
+   initMapDragAndDrop() {
+       const canvas = document.getElementById('map-2d-canvas');
+       if (!canvas) return;
+       
+       const tables = canvas.querySelectorAll('.map-2d-table');
+       let draggedTable = null;
+       let offsetX = 0;
+       let offsetY = 0;
+       let isDragging = false;
+       
+       tables.forEach(table => {
+           table.addEventListener('mousedown', (e) => {
+               e.preventDefault();
+               draggedTable = table;
+               const rect = table.getBoundingClientRect();
+               const canvasRect = canvas.getBoundingClientRect();
+               offsetX = e.clientX - rect.left;
+               offsetY = e.clientY - rect.top;
+               table.style.opacity = '0.7';
+               table.style.zIndex = '1000';
+               table.style.cursor = 'grabbing';
+               isDragging = true;
+           });
+       });
+       
+       canvas.addEventListener('mousemove', (e) => {
+           if (draggedTable && isDragging) {
+               e.preventDefault();
+               const canvasRect = canvas.getBoundingClientRect();
+               const x = ((e.clientX - canvasRect.left - offsetX) / canvasRect.width) * 100;
+               const y = ((e.clientY - canvasRect.top - offsetY) / canvasRect.height) * 100;
+               
+               // Limiter dans les bounds
+               const clampedX = Math.max(0, Math.min(95, x));
+               const clampedY = Math.max(0, Math.min(95, y));
+               
+               draggedTable.style.left = clampedX + '%';
+               draggedTable.style.top = clampedY + '%';
+           }
+       });
+       
+       const handleMouseUp = () => {
+           if (draggedTable && isDragging) {
+               draggedTable.style.opacity = '1';
+               draggedTable.style.zIndex = '1';
+               draggedTable.style.cursor = 'move';
+               this.saveMapPositions();
+               draggedTable = null;
+               isDragging = false;
+           }
+       };
+       
+       canvas.addEventListener('mouseup', handleMouseUp);
+       document.addEventListener('mouseup', handleMouseUp);
+   }
+   
+   saveMapPositions() {
+       const canvas = document.getElementById('map-2d-canvas');
+       if (!canvas) return;
+       
+       const tables = canvas.querySelectorAll('.map-2d-table');
+       tables.forEach(tableEl => {
+           const tableNum = parseInt(tableEl.dataset.tableNum);
+           const table = this.tables.find(t => t.number === tableNum);
+           if (table) {
+               const left = parseFloat(tableEl.style.left);
+               const top = parseFloat(tableEl.style.top);
+               table.x = left;
+               table.y = top;
+           }
+       });
+       
+       this.saveToStorage();
+       this.showToast('Positions enregistrées', 'success');
+   }
+   
+   resetMapPositions() {
+       if (!confirm('Voulez-vous réinitialiser toutes les positions des tables ?')) {
+           return;
+       }
+       
+       this.tables.forEach(table => {
+           delete table.x;
+           delete table.y;
+       });
+       
+       this.saveToStorage();
+       this.renderMapView();
+       this.showToast('Positions réinitialisées', 'success');
    }
    
    changeTableStatus(tableNum, status) {
@@ -2792,34 +3152,78 @@ class CuisyncApp {
        const reservationsMgmt = document.getElementById('reservations-management');
        const statisticsView = this.dom.statisticsView;
        const historySection = this.dom.historySection;
-       const serversMgmt = this.dom.serversManagement;
+       const menuMgmt = this.dom.menuManagement;
+       const clientsMgmt = this.dom.clientsManagement;
+       const settingsMgmt = this.dom.settingsManagement;
        
-       // Hide all
+       // Hide all content sections
        if (tablesMgmt) tablesMgmt.classList.add('hidden');
        if (reservationsMgmt) reservationsMgmt.classList.add('hidden');
        if (statisticsView) statisticsView.classList.add('hidden');
        if (historySection) historySection.classList.add('hidden');
-       if (serversMgmt) serversMgmt.classList.add('hidden');
+       if (menuMgmt) menuMgmt.classList.add('hidden');
+       if (clientsMgmt) clientsMgmt.classList.add('hidden');
+       if (settingsMgmt) settingsMgmt.classList.add('hidden');
+       if (this.dom.mapView) this.dom.mapView.classList.add('hidden');
+       
+       // Update tab states
+       document.querySelectorAll('.host-main-tab').forEach(tab => {
+           tab.classList.remove('active');
+       });
        
        // Show selected
        switch (view) {
            case 'tables':
                if (tablesMgmt) tablesMgmt.classList.remove('hidden');
+               if (this.dom.tablesViewBtn) this.dom.tablesViewBtn.classList.add('active');
                break;
            case 'reservations':
                if (reservationsMgmt) reservationsMgmt.classList.remove('hidden');
+               if (this.dom.reservationsViewBtn) this.dom.reservationsViewBtn.classList.add('active');
                break;
            case 'stats':
                if (statisticsView) {
                    statisticsView.classList.remove('hidden');
                    this.updateStatistics();
                }
+               if (this.dom.statsViewBtn) this.dom.statsViewBtn.classList.add('active');
                break;
-           case 'servers':
-               if (serversMgmt) {
-                   serversMgmt.classList.remove('hidden');
-                   this.renderServers();
+           case 'menu':
+               if (menuMgmt) {
+                   menuMgmt.classList.remove('hidden');
+                   this.renderMenuList();
                }
+               if (this.dom.menuViewBtn) this.dom.menuViewBtn.classList.add('active');
+               break;
+           case 'clients':
+               if (clientsMgmt) {
+                   clientsMgmt.classList.remove('hidden');
+                   this.renderClientPreferences();
+               }
+               if (this.dom.clientsViewBtn) this.dom.clientsViewBtn.classList.add('active');
+               break;
+           case 'history':
+               if (historySection) {
+                   historySection.classList.remove('hidden');
+                   this.renderHistory();
+               }
+               if (this.dom.historyViewBtn) this.dom.historyViewBtn.classList.add('active');
+               break;
+           case 'settings':
+               if (settingsMgmt) {
+                   settingsMgmt.classList.remove('hidden');
+                   this.renderServers();
+                   this.renderEvents();
+                   this.renderOpeningHours();
+               }
+               if (this.dom.settingsViewBtn) this.dom.settingsViewBtn.classList.add('active');
+               break;
+           case 'map':
+               if (this.dom.mapView) {
+                   this.dom.mapView.classList.remove('hidden');
+                   this.renderMapView();
+               }
+               if (this.dom.mapViewBtn) this.dom.mapViewBtn.classList.add('active');
                break;
        }
    }
@@ -2892,7 +3296,7 @@ class CuisyncApp {
        this.showUndoNotification('Paiement enregistré');
    }
    
-   // Update confirmPayment to handle split payment
+   // Update confirmPayment to handle multiple partial payments
    confirmPayment() {
        if (!this.currentPaymentPadId) {
            this.showToast('Aucune commande sélectionnée', 'error');
@@ -2906,6 +3310,9 @@ class CuisyncApp {
            this.closePaymentPanel();
            return;
        }
+       
+       // Initialize partialPayments if not exists
+       if (!pad.partialPayments) pad.partialPayments = [];
        
        const method = this.dom.paymentMethod ? this.dom.paymentMethod.value : 'other';
        const subtotal = this.getPadTotal(pad);
@@ -2921,56 +3328,96 @@ class CuisyncApp {
        const discount = Math.max(0, parseFloat(discountStr) || 0);
        const tip = Math.max(0, parseFloat(tipStr) || 0);
        
-       if (discount > subtotal) {
-           this.showToast('La remise ne peut pas être supérieure au sous-total', 'error');
+       // Calculate total due (only once, applied to first payment)
+       const totalDue = Math.max(0, subtotal - discount) + (Math.max(0, subtotal - discount) * taxRate / 100) + tip;
+       
+       // Get amount for this payment
+       const splitAmountStr = this.dom.paymentSplitAmount && this.dom.paymentSplitAmount.value ? this.dom.paymentSplitAmount.value : '';
+       let paymentAmount = parseFloat(splitAmountStr) || 0;
+       
+       // If no split amount specified, use remaining amount
+       if (paymentAmount <= 0) {
+           const paidAmount = this.getPaidAmount(pad);
+           paymentAmount = Math.max(0, totalDue - paidAmount);
+       }
+       
+       if (paymentAmount <= 0) {
+           this.showToast('Montant invalide', 'error');
            return;
        }
        
-       let total = Math.max(0, subtotal - discount) + (Math.max(0, subtotal - discount) * taxRate / 100) + tip;
+       // Check if payment exceeds remaining
+       const paidAmount = this.getPaidAmount(pad);
+       const remaining = Math.max(0, totalDue - paidAmount);
        
-       // Handle split payment
-       if (method === 'split' && this.dom.splitAmount && this.dom.splitAmount.value) {
-           const splitAmount = parseFloat(this.dom.splitAmount.value);
-           if (isNaN(splitAmount) || splitAmount <= 0) {
-               this.showToast('Montant de paiement partagé invalide', 'error');
-               return;
-           }
-           if (splitAmount > total) {
-               this.showToast('Le montant partagé ne peut pas être supérieur au total', 'error');
-               return;
-           }
-           total = splitAmount;
+       if (paymentAmount > remaining) {
+           this.showToast(`Montant trop élevé. Reste à payer: ${remaining.toFixed(2)} €`, 'error');
+           return;
        }
        
+       // Validate cash payment
        if (method === 'cash') {
            const receivedStr = this.dom.paymentReceived && this.dom.paymentReceived.value ? this.dom.paymentReceived.value : '0';
            const received = parseFloat(receivedStr) || 0;
-           if (isNaN(received) || received < total) {
-               this.showToast(`Montant reçu insuffisant. Total: ${total.toFixed(2)} €`, 'error');
+           if (isNaN(received) || received < paymentAmount) {
+               this.showToast(`Montant reçu insuffisant. Montant: ${paymentAmount.toFixed(2)} €`, 'error');
                return;
            }
        }
        
-       // Record sale
+       // Get number of people for this payment
+       const peopleStr = this.dom.paymentSplitPeople && this.dom.paymentSplitPeople.value ? this.dom.paymentSplitPeople.value : '';
+       const people = parseInt(peopleStr) || null;
+       
+       // Add partial payment
+       const partialPayment = {
+           id: this.generateId(),
+           amount: paymentAmount,
+           method: method,
+           people: people,
+           discount: pad.partialPayments.length === 0 ? discount : 0, // Apply discount only to first payment
+           tip: pad.partialPayments.length === 0 ? tip : 0, // Apply tip only to first payment
+           createdAt: new Date().toISOString()
+       };
+       
+       pad.partialPayments.push(partialPayment);
+       pad.updatedAt = new Date().toISOString();
+       
+       // Record sale for this payment
        this.recordSale({
            padId,
            table: pad.table,
            subtotal: Math.max(0, subtotal),
-           discount: Math.max(0, discount),
+           discount: pad.partialPayments.length === 1 ? discount : 0,
            tax: Math.max(0, (Math.max(0, subtotal - discount) * taxRate / 100)),
-           tip: Math.max(0, tip),
-           total: Math.max(0, total),
+           tip: pad.partialPayments.length === 1 ? tip : 0,
+           total: paymentAmount,
            method,
+           people: people,
            createdAt: new Date().toISOString()
        });
        
-       this.closePaymentPanel();
-       this.markPadPaid(padId);
-       if (this.posSettings && this.posSettings.printAfterPay) {
-           setTimeout(() => {
-               this.printPadReceipt(padId);
-           }, 500);
+       // Check if fully paid
+       const newPaidAmount = this.getPaidAmount(pad);
+       const newRemaining = Math.max(0, totalDue - newPaidAmount);
+       
+       if (newRemaining <= 0.01) { // Allow small rounding differences
+           // Fully paid
+           this.markPadPaid(padId);
+           if (this.posSettings && this.posSettings.printAfterPay) {
+               setTimeout(() => {
+                   this.printPadReceipt(padId);
+               }, 500);
+           }
+           this.closePaymentPanel();
+           this.showToast(`Table ${pad.table} entièrement payée`, 'success');
+       } else {
+           // Partially paid, refresh panel
+           this.openPaymentPanel(padId);
+           this.showToast(`Paiement de ${paymentAmount.toFixed(2)} € enregistré. Reste: ${newRemaining.toFixed(2)} €`, 'success');
        }
+       
+       this.saveToStorage();
    }
    
    // Reservation Calendar
