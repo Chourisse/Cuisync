@@ -15,6 +15,13 @@ class CuisyncApp {
         this.servers = []; // Liste des serveurs
         this.notifications = []; // Notifications système
         this.soundEnabled = true; // Son activé/désactivé
+        this.inventory = []; // Gestion des stocks
+        this.shifts = []; // Gestion des équipes/shifts
+        this.discounts = []; // Remises et promotions
+        this.currentUser = null; // Utilisateur actuel
+        this.userRole = 'server'; // Rôle: server, kitchen, manager, admin
+        this.offlineQueue = []; // Queue pour synchronisation différée
+        this.isOnline = navigator.onLine;
         this.restaurantSettings = {
             name: '',
             phone: '',
@@ -37,11 +44,26 @@ class CuisyncApp {
         this.debounceTimer = null;
         this.maxTables = 20; // Nombre maximum de tables par défaut
         
+        // Synchronisation multi-appareils
+        this.broadcastChannel = null;
+        this.deviceId = this.getDeviceId();
+        this.isFullscreen = false;
+        this.modifiers = ['sans gluten', 'végétarien', 'végétalien', 'sans lactose', 'épicé', 'sans alcool'];
+        
         // DOM elements cache
         this.dom = {};
         this.cacheDOMElements();
         
         this.init();
+    }
+    
+    getDeviceId() {
+        let deviceId = localStorage.getItem('cuisync-device-id');
+        if (!deviceId) {
+            deviceId = 'device-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('cuisync-device-id', deviceId);
+        }
+        return deviceId;
     }
     
     cacheDOMElements() {
@@ -196,9 +218,32 @@ class CuisyncApp {
             // Kitchen
             kitchenFilterSelect: document.getElementById('kitchen-filter-select'),
             soundToggleBtn: document.getElementById('sound-toggle-btn'),
+            fullscreenBtn: document.getElementById('fullscreen-btn'),
+            printAllKitchenBtn: document.getElementById('print-all-kitchen-btn'),
             kitchenPendingCount: document.getElementById('kitchen-pending-count'),
+            modifiersContainer: document.getElementById('modifiers-container'),
             kitchenReadyCount: document.getElementById('kitchen-ready-count'),
             kitchenAvgTime: document.getElementById('kitchen-avg-time'),
+            
+            // New sections
+            inventoryViewBtn: document.getElementById('inventory-view-btn'),
+            shiftsViewBtn: document.getElementById('shifts-view-btn'),
+            discountsViewBtn: document.getElementById('discounts-view-btn'),
+            reportsViewBtn: document.getElementById('reports-view-btn'),
+            inventoryManagement: document.getElementById('inventory-management'),
+            shiftsManagement: document.getElementById('shifts-management'),
+            discountsManagement: document.getElementById('discounts-management'),
+            reportsManagement: document.getElementById('reports-management'),
+            inventoryList: document.getElementById('inventory-list'),
+            shiftsList: document.getElementById('shifts-list'),
+            currentShiftInfo: document.getElementById('current-shift-info'),
+            discountsList: document.getElementById('discounts-list'),
+            reportsContent: document.getElementById('reports-content'),
+            addShiftBtn: document.getElementById('add-shift-btn'),
+            addDiscountBtn: document.getElementById('add-discount-btn'),
+            generateReportBtn: document.getElementById('generate-report-btn'),
+            exportPdfBtn: document.getElementById('export-pdf-btn'),
+            reportTypeSelect: document.getElementById('report-type-select'),
             
             // Servers
             menuManagement: document.getElementById('menu-management'),
@@ -259,6 +304,10 @@ class CuisyncApp {
         this.loadEventsFromStorage();
         this.loadClientPreferencesFromStorage();
         this.loadServersFromStorage();
+        this.loadInventoryFromStorage();
+        this.loadShiftsFromStorage();
+        this.loadDiscountsFromStorage();
+        this.loadOfflineQueueFromStorage();
         this.loadRestaurantSettingsFromStorage();
         this.setupEventListeners();
         this.setupNotifications();
@@ -291,12 +340,261 @@ class CuisyncApp {
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(() => {});
         }
+        
+        // Setup multi-device synchronization
+        this.setupBroadcastChannel();
+        
+        // Setup keyboard shortcuts
+        this.setupKeyboardShortcuts();
+        
+        // Setup fullscreen mode
+        this.setupFullscreenMode();
+    }
+    
+    setupBroadcastChannel() {
+        if (typeof BroadcastChannel !== 'undefined') {
+            this.broadcastChannel = new BroadcastChannel('cuisync-sync');
+            
+            this.broadcastChannel.onmessage = (event) => {
+                const { type, data, deviceId } = event.data;
+                
+                // Ignore messages from this device
+                if (deviceId === this.deviceId) return;
+                
+                switch (type) {
+                    case 'pad-updated':
+                        this.handleRemotePadUpdate(data);
+                        break;
+                    case 'pad-sent':
+                        this.handleRemotePadSent(data);
+                        break;
+                    case 'pad-ready':
+                        this.handleRemotePadReady(data);
+                        break;
+                    case 'menu-updated':
+                        this.handleRemoteMenuUpdate(data);
+                        break;
+                    case 'table-updated':
+                        this.handleRemoteTableUpdate(data);
+                        break;
+                    case 'inventory-updated':
+                        this.handleRemoteInventoryUpdate(data);
+                        break;
+                }
+            };
+        }
+    }
+    
+    broadcastMessage(type, data) {
+        if (this.broadcastChannel && this.isOnline) {
+            try {
+                this.broadcastChannel.postMessage({
+                    type,
+                    data,
+                    deviceId: this.deviceId,
+                    timestamp: Date.now()
+                });
+            } catch (error) {
+                console.error('Broadcast error:', error);
+                // Queue for later sync
+                this.offlineQueue.push({ type, data });
+            }
+        } else {
+            // Queue for later sync when online
+            this.offlineQueue.push({ type, data });
+            this.saveToStorage();
+        }
+    }
+    
+    handleRemotePadUpdate(pad) {
+        const existingPad = this.pads.find(p => p.id === pad.id);
+        if (existingPad) {
+            Object.assign(existingPad, pad);
+        } else {
+            this.pads.push(pad);
+        }
+        this.renderViews();
+    }
+    
+    handleRemotePadSent(padId) {
+        const pad = this.pads.find(p => p.id === padId);
+        if (pad && pad.status === 'open') {
+            pad.status = 'sent';
+            pad.sentAt = new Date().toISOString();
+            this.renderViews();
+            if (this.currentView === 'kitchen') {
+                this.playNotificationSound();
+                this.showKitchenAlert(`Nouvelle commande - Table ${pad.table}`);
+            }
+        }
+    }
+    
+    handleRemotePadReady(padId) {
+        const pad = this.pads.find(p => p.id === padId);
+        if (pad && pad.status === 'sent') {
+            pad.status = 'ready';
+            pad.readyAt = new Date().toISOString();
+            this.renderViews();
+        }
+    }
+    
+    handleRemoteMenuUpdate(menu) {
+        this.menu = menu;
+        this.renderMenu();
+        this.populateDishSelects();
+    }
+    
+    handleRemoteTableUpdate(table) {
+        const existingTable = this.tables.find(t => t.number === table.number);
+        if (existingTable) {
+            Object.assign(existingTable, table);
+        } else {
+            this.tables.push(table);
+        }
+        this.renderTables();
+    }
+    
+    handleRemoteInventoryUpdate(inv) {
+        const existing = this.inventory.find(i => i.id === inv.id);
+        if (existing) {
+            Object.assign(existing, inv);
+        } else {
+            this.inventory.push(inv);
+        }
+        if (this.currentView === 'host' && this.dom.inventoryManagement && !this.dom.inventoryManagement.classList.contains('hidden')) {
+            this.renderInventory();
+        }
+    }
+    
+    setupKeyboardShortcuts() {
+        document.addEventListener('keydown', (e) => {
+            // Ignore shortcuts when typing in inputs
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+                // Allow Ctrl/Cmd shortcuts
+                if (!e.ctrlKey && !e.metaKey) return;
+            }
+            
+            // Ctrl/Cmd + S: Save/Send all
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (this.currentView === 'server') {
+                    const sendAllBtn = document.getElementById('send-all-btn');
+                    if (sendAllBtn && !sendAllBtn.disabled) {
+                        sendAllBtn.click();
+                    }
+                }
+            }
+            
+            // Ctrl/Cmd + P: Print kitchen ticket
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p' && this.currentView === 'kitchen') {
+                e.preventDefault();
+                const firstSentPad = this.pads.find(p => p.status === 'sent');
+                if (firstSentPad) {
+                    this.printKitchenTicket(firstSentPad.id);
+                }
+            }
+            
+            // F11: Toggle fullscreen
+            if (e.key === 'F11') {
+                e.preventDefault();
+                this.toggleFullscreen();
+            }
+            
+            // Escape: Exit fullscreen
+            if (e.key === 'Escape' && this.isFullscreen) {
+                this.exitFullscreen();
+            }
+            
+            // Number keys 1-3: Switch views
+            if (!e.ctrlKey && !e.metaKey && e.key >= '1' && e.key <= '3') {
+                const views = ['server', 'kitchen', 'host'];
+                const viewIndex = parseInt(e.key) - 1;
+                if (views[viewIndex]) {
+                    this.switchView(views[viewIndex]);
+                }
+            }
+        });
+    }
+    
+    setupFullscreenMode() {
+        // Check if we're in kitchen view and should auto-enter fullscreen
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('fullscreen') === 'kitchen') {
+            this.switchView('kitchen');
+            setTimeout(() => this.enterFullscreen(), 500);
+        }
+    }
+    
+    toggleFullscreen() {
+        if (!this.isFullscreen) {
+            this.enterFullscreen();
+        } else {
+            this.exitFullscreen();
+        }
+    }
+    
+    enterFullscreen() {
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+            document.documentElement.webkitRequestFullscreen();
+        } else if (document.documentElement.msRequestFullscreen) {
+            document.documentElement.msRequestFullscreen();
+        }
+        this.isFullscreen = true;
+        document.body.classList.add('fullscreen-mode');
+    }
+    
+    exitFullscreen() {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+        }
+        this.isFullscreen = false;
+        document.body.classList.remove('fullscreen-mode');
+    }
+    
+    showKitchenAlert(message) {
+        // Create a prominent alert for kitchen
+        const alert = document.createElement('div');
+        alert.className = 'kitchen-alert';
+        alert.innerHTML = `
+            <div class="kitchen-alert-content">
+                <div class="kitchen-alert-icon">🔔</div>
+                <div class="kitchen-alert-message">${this.escapeHTML(message)}</div>
+            </div>
+        `;
+        document.body.appendChild(alert);
+        
+        // Animate in
+        setTimeout(() => alert.classList.add('show'), 100);
+        
+        // Remove after 5 seconds
+        setTimeout(() => {
+            alert.classList.remove('show');
+            setTimeout(() => alert.remove(), 500);
+        }, 5000);
+        
+        // Play sound
+        this.playNotificationSound();
+        
+        // Vibrate if supported
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]);
+        }
     }
     
     setupEventListeners() {
         // View toggle
-        this.dom.serverViewBtn.addEventListener('click', () => this.switchView('server'));
-        this.dom.kitchenViewBtn.addEventListener('click', () => this.switchView('kitchen'));
+        if (this.dom.serverViewBtn) {
+            this.dom.serverViewBtn.addEventListener('click', () => this.switchView('server'));
+        }
+        if (this.dom.kitchenViewBtn) {
+            this.dom.kitchenViewBtn.addEventListener('click', () => this.switchView('kitchen'));
+        }
         if (this.dom.hostViewBtn) {
             this.dom.hostViewBtn.addEventListener('click', () => this.switchView('host'));
         }
@@ -438,6 +736,58 @@ class CuisyncApp {
         if (this.dom.menuViewBtn) {
             this.dom.menuViewBtn.addEventListener('click', () => this.toggleHostView('menu'));
         }
+        if (this.dom.inventoryViewBtn) {
+            this.dom.inventoryViewBtn.addEventListener('click', () => this.toggleHostView('inventory'));
+        }
+        if (this.dom.shiftsViewBtn) {
+            this.dom.shiftsViewBtn.addEventListener('click', () => this.toggleHostView('shifts'));
+        }
+        if (this.dom.discountsViewBtn) {
+            this.dom.discountsViewBtn.addEventListener('click', () => this.toggleHostView('discounts'));
+        }
+        if (this.dom.reportsViewBtn) {
+            this.dom.reportsViewBtn.addEventListener('click', () => this.toggleHostView('reports'));
+        }
+        
+        // New section event listeners
+        if (this.dom.addShiftBtn) {
+            this.dom.addShiftBtn.addEventListener('click', () => this.showAddShiftModal());
+        }
+        if (this.dom.addDiscountBtn) {
+            this.dom.addDiscountBtn.addEventListener('click', () => this.showAddDiscountModal());
+        }
+        if (this.dom.generateReportBtn) {
+            this.dom.generateReportBtn.addEventListener('click', () => this.generateReport());
+        }
+        if (this.dom.exportPdfBtn) {
+            this.dom.exportPdfBtn.addEventListener('click', () => this.exportReportToPDF());
+        }
+        
+        // Inventory filters
+        const inventorySearchInput = document.getElementById('inventory-search-input');
+        if (inventorySearchInput) {
+            inventorySearchInput.addEventListener('input', () => this.renderInventory());
+        }
+        const inventoryStatusFilter = document.getElementById('inventory-status-filter');
+        if (inventoryStatusFilter) {
+            inventoryStatusFilter.addEventListener('change', () => this.renderInventory());
+        }
+        const refreshInventoryBtn = document.getElementById('refresh-inventory-btn');
+        if (refreshInventoryBtn) {
+            refreshInventoryBtn.addEventListener('click', () => this.renderInventory());
+        }
+        
+        // Online/offline detection
+        window.addEventListener('online', () => {
+            this.isOnline = true;
+            this.syncOfflineQueue();
+            this.showToast('Connexion rétablie', 'success');
+        });
+        
+        window.addEventListener('offline', () => {
+            this.isOnline = false;
+            this.showToast('Mode hors ligne activé', 'info');
+        });
         if (this.dom.clientsViewBtn) {
             this.dom.clientsViewBtn.addEventListener('click', () => this.toggleHostView('clients'));
         }
@@ -601,6 +951,17 @@ class CuisyncApp {
             this.dom.soundToggleBtn.addEventListener('click', () => this.toggleSound());
         }
         
+        if (this.dom.fullscreenBtn) {
+            this.dom.fullscreenBtn.addEventListener('click', () => this.toggleFullscreen());
+        }
+        
+        if (this.dom.printAllKitchenBtn) {
+            this.dom.printAllKitchenBtn.addEventListener('click', () => this.printAllKitchenTickets());
+        }
+        
+        // Render modifiers on init
+        this.renderModifiers();
+        
         // Servers
         // Set initial active tab for host view
         if (this.dom.tablesViewBtn) {
@@ -693,6 +1054,18 @@ class CuisyncApp {
                 }
                 if (this.notifications && Array.isArray(this.notifications)) {
                     localStorage.setItem('cuisync-notifications', JSON.stringify(this.notifications));
+                }
+                if (this.inventory && Array.isArray(this.inventory)) {
+                    localStorage.setItem('cuisync-inventory', JSON.stringify(this.inventory));
+                }
+                if (this.shifts && Array.isArray(this.shifts)) {
+                    localStorage.setItem('cuisync-shifts', JSON.stringify(this.shifts));
+                }
+                if (this.discounts && Array.isArray(this.discounts)) {
+                    localStorage.setItem('cuisync-discounts', JSON.stringify(this.discounts));
+                }
+                if (this.offlineQueue && Array.isArray(this.offlineQueue)) {
+                    localStorage.setItem('cuisync-offline-queue', JSON.stringify(this.offlineQueue));
                 }
                 localStorage.setItem('cuisync-sound-enabled', JSON.stringify(this.soundEnabled));
             } catch (error) {
@@ -843,6 +1216,62 @@ class CuisyncApp {
         }
     }
     
+    loadInventoryFromStorage() {
+        try {
+            const savedInventory = localStorage.getItem('cuisync-inventory');
+            if (savedInventory) {
+                this.inventory = JSON.parse(savedInventory);
+            } else {
+                this.inventory = [];
+            }
+        } catch (error) {
+            console.error('Failed to load inventory from localStorage:', error);
+            this.inventory = [];
+        }
+    }
+    
+    loadShiftsFromStorage() {
+        try {
+            const savedShifts = localStorage.getItem('cuisync-shifts');
+            if (savedShifts) {
+                this.shifts = JSON.parse(savedShifts);
+            } else {
+                this.shifts = [];
+            }
+        } catch (error) {
+            console.error('Failed to load shifts from localStorage:', error);
+            this.shifts = [];
+        }
+    }
+    
+    loadDiscountsFromStorage() {
+        try {
+            const savedDiscounts = localStorage.getItem('cuisync-discounts');
+            if (savedDiscounts) {
+                this.discounts = JSON.parse(savedDiscounts);
+            } else {
+                this.discounts = [];
+            }
+        } catch (error) {
+            console.error('Failed to load discounts from localStorage:', error);
+            this.discounts = [];
+        }
+    }
+    
+    loadOfflineQueueFromStorage() {
+        try {
+            const savedQueue = localStorage.getItem('cuisync-offline-queue');
+            if (savedQueue) {
+                this.offlineQueue = JSON.parse(savedQueue);
+            } else {
+                this.offlineQueue = [];
+            }
+        } catch (error) {
+            console.error('Failed to load offline queue from localStorage:', error);
+            this.offlineQueue = [];
+        }
+    }
+    
     setupNotifications() {
         // Check for upcoming reservations every minute
         setInterval(() => {
@@ -922,6 +1351,41 @@ class CuisyncApp {
         this.renderNotifications();
     }
     
+    renderModifiers() {
+        if (!this.dom.modifiersContainer) return;
+        
+        const html = this.modifiers.map(modifier => `
+            <label class="modifier-checkbox">
+                <input type="checkbox" value="${this.escapeHTML(modifier)}" class="modifier-check">
+                <span>${this.escapeHTML(modifier)}</span>
+            </label>
+        `).join('');
+        
+        this.dom.modifiersContainer.innerHTML = html;
+    }
+    
+    getSelectedModifiers() {
+        if (!this.dom.modifiersContainer) return [];
+        const checkboxes = this.dom.modifiersContainer.querySelectorAll('.modifier-check:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+    
+    printAllKitchenTickets() {
+        const sentPads = this.pads.filter(p => p.status === 'sent');
+        if (sentPads.length === 0) {
+            this.showToast('Aucune commande en attente à imprimer', 'info');
+            return;
+        }
+        
+        sentPads.forEach((pad, index) => {
+            setTimeout(() => {
+                this.printKitchenTicket(pad.id);
+            }, index * 1000); // Stagger prints by 1 second
+        });
+        
+        this.showToast(`${sentPads.length} ticket(s) en cours d'impression`, 'success');
+    }
+    
     initializeDefaultTables() {
         this.tables = [];
         for (let i = 1; i <= this.maxTables; i++) {
@@ -947,36 +1411,40 @@ class CuisyncApp {
     switchView(view) {
         this.currentView = view;
         
+        // Hide all views first
+        if (this.dom.serverView) this.dom.serverView.classList.remove('active');
+        if (this.dom.kitchenView) this.dom.kitchenView.classList.remove('active');
+        if (this.dom.hostView) this.dom.hostView.classList.remove('active');
+        
+        // Remove active class from all buttons
+        if (this.dom.serverViewBtn) this.dom.serverViewBtn.classList.remove('active');
+        if (this.dom.kitchenViewBtn) this.dom.kitchenViewBtn.classList.remove('active');
+        if (this.dom.hostViewBtn) this.dom.hostViewBtn.classList.remove('active');
+        
+        // Set aria-pressed to false for all buttons
+        if (this.dom.serverViewBtn) this.dom.serverViewBtn.setAttribute('aria-pressed', 'false');
+        if (this.dom.kitchenViewBtn) this.dom.kitchenViewBtn.setAttribute('aria-pressed', 'false');
+        if (this.dom.hostViewBtn) this.dom.hostViewBtn.setAttribute('aria-pressed', 'false');
+        
+        // Show selected view and activate button
         if (view === 'server') {
-            this.dom.serverView.classList.add('active');
-            this.dom.kitchenView.classList.remove('active');
-            if (this.dom.hostView) this.dom.hostView.classList.remove('active');
-            this.dom.serverViewBtn.classList.add('active');
-            this.dom.kitchenViewBtn.classList.remove('active');
-            if (this.dom.hostViewBtn) this.dom.hostViewBtn.classList.remove('active');
-            this.dom.serverViewBtn.setAttribute('aria-pressed', 'true');
-            this.dom.kitchenViewBtn.setAttribute('aria-pressed', 'false');
-            if (this.dom.hostViewBtn) this.dom.hostViewBtn.setAttribute('aria-pressed', 'false');
+            if (this.dom.serverView) this.dom.serverView.classList.add('active');
+            if (this.dom.serverViewBtn) {
+                this.dom.serverViewBtn.classList.add('active');
+                this.dom.serverViewBtn.setAttribute('aria-pressed', 'true');
+            }
         } else if (view === 'kitchen') {
-            this.dom.kitchenView.classList.add('active');
-            this.dom.serverView.classList.remove('active');
-            if (this.dom.hostView) this.dom.hostView.classList.remove('active');
-            this.dom.kitchenViewBtn.classList.add('active');
-            this.dom.serverViewBtn.classList.remove('active');
-            if (this.dom.hostViewBtn) this.dom.hostViewBtn.classList.remove('active');
-            this.dom.kitchenViewBtn.setAttribute('aria-pressed', 'true');
-            this.dom.serverViewBtn.setAttribute('aria-pressed', 'false');
-            if (this.dom.hostViewBtn) this.dom.hostViewBtn.setAttribute('aria-pressed', 'false');
+            if (this.dom.kitchenView) this.dom.kitchenView.classList.add('active');
+            if (this.dom.kitchenViewBtn) {
+                this.dom.kitchenViewBtn.classList.add('active');
+                this.dom.kitchenViewBtn.setAttribute('aria-pressed', 'true');
+            }
         } else if (view === 'host') {
             if (this.dom.hostView) this.dom.hostView.classList.add('active');
-            this.dom.serverView.classList.remove('active');
-            this.dom.kitchenView.classList.remove('active');
-            if (this.dom.hostViewBtn) this.dom.hostViewBtn.classList.add('active');
-            this.dom.serverViewBtn.classList.remove('active');
-            this.dom.kitchenViewBtn.classList.remove('active');
-            if (this.dom.hostViewBtn) this.dom.hostViewBtn.setAttribute('aria-pressed', 'true');
-            this.dom.serverViewBtn.setAttribute('aria-pressed', 'false');
-            this.dom.kitchenViewBtn.setAttribute('aria-pressed', 'false');
+            if (this.dom.hostViewBtn) {
+                this.dom.hostViewBtn.classList.add('active');
+                this.dom.hostViewBtn.setAttribute('aria-pressed', 'true');
+            }
         }
         
         this.renderViews();
@@ -1038,10 +1506,13 @@ class CuisyncApp {
             return;
         }
         
+        const modifiers = this.getSelectedModifiers();
+        
         this.addItemToPad(tableNum, dish, qty, course, note, {
             categoryName: selectedCategory ? selectedCategory.name : null,
             price: price,
-            hasAllergens: hasAllergens
+            hasAllergens: hasAllergens,
+            modifiers: modifiers
         }, {
             covers: covers,
             clientName: clientName,
@@ -1085,6 +1556,12 @@ class CuisyncApp {
         this.dom.noteInput.value = '';
         if (this.dom.priceInput) this.dom.priceInput.value = '';
         if (this.dom.itemAllergenCheck) this.dom.itemAllergenCheck.checked = false;
+        
+        // Clear modifiers
+        if (this.dom.modifiersContainer) {
+            const checkboxes = this.dom.modifiersContainer.querySelectorAll('.modifier-check');
+            checkboxes.forEach(cb => cb.checked = false);
+        }
         
         // Keep table number, covers, client name, and table notes for convenience
         // this.dom.tableInput.value = '';
@@ -1130,6 +1607,8 @@ class CuisyncApp {
             price: typeof extra.price === 'number' ? extra.price : null,
             category: extra.categoryName || null,
             hasAllergens: extra.hasAllergens || false,
+            modifiers: extra.modifiers && extra.modifiers.length > 0 ? extra.modifiers : null,
+            allergen: extra.hasAllergens || false,
             createdAt: new Date().toISOString()
         };
         
@@ -1348,6 +1827,10 @@ class CuisyncApp {
             pad.status = 'sent';
             pad.sentAt = new Date().toISOString();
             pad.updatedAt = new Date().toISOString();
+            
+            // Broadcast to other devices
+            this.broadcastMessage('pad-sent', pad.id);
+            this.broadcastMessage('pad-updated', pad);
         });
         
         this.undoStack.push({
@@ -1362,6 +1845,14 @@ class CuisyncApp {
        this.showToast(`${openPads.length} commande(s) envoyée(s) en cuisine`, 'success');
        this.playNotificationSound();
        this.showUndoNotification('Commandes envoyées');
+       
+       // Auto-print kitchen tickets if enabled
+       const printEnabled = localStorage.getItem('cuisync-auto-print') === 'true';
+       if (printEnabled) {
+           openPads.forEach((pad, index) => {
+               setTimeout(() => this.printKitchenTicket(pad.id), index * 1000);
+           });
+       }
    }
    
    sendPad(padId) {
@@ -1379,6 +1870,10 @@ class CuisyncApp {
            data: oldState
        });
        
+       // Broadcast to other devices
+       this.broadcastMessage('pad-sent', padId);
+       this.broadcastMessage('pad-updated', pad);
+       
        this.saveToStorage();
        this.renderViews();
        this.updateSendAllButton();
@@ -1386,6 +1881,12 @@ class CuisyncApp {
        this.showToast(`Table ${pad.table} envoyée en cuisine`, 'success');
        this.playNotificationSound();
        this.showUndoNotification('Commande envoyée');
+       
+       // Auto-print kitchen ticket if enabled
+       const printEnabled = localStorage.getItem('cuisync-auto-print') === 'true';
+       if (printEnabled) {
+           setTimeout(() => this.printKitchenTicket(padId), 500);
+       }
    }
    
    markPadReady(padId) {
@@ -1402,6 +1903,10 @@ class CuisyncApp {
            type: 'markReady',
            data: oldState
        });
+       
+       // Broadcast to other devices
+       this.broadcastMessage('pad-ready', padId);
+       this.broadcastMessage('pad-updated', pad);
        
        this.saveToStorage();
        this.renderViews();
@@ -1671,6 +2176,9 @@ class CuisyncApp {
                    case 'served':
                        this.markPadServed(padId);
                        break;
+                   case 'print-kitchen':
+                       this.printKitchenTicket(padId);
+                       break;
                }
            });
        });
@@ -1811,15 +2319,17 @@ class CuisyncApp {
        }
        
        const itemsHTML = pad.items.map(item => `
-           <div class="pad-item">
+           <div class="pad-item ${item.allergen || (item.hasAllergens && item.hasAllergens) ? 'has-allergen' : ''}">
                <div class="item-details">
                    <h4>${this.escapeHTML(item.dish)}</h4>
                    <div class="item-meta">
                        <span>${item.course}</span>
                        ${item.category ? `<span>•</span><span>${this.escapeHTML(item.category)}</span>` : ''}
                        ${typeof item.price === 'number' ? `<span>•</span><span>${item.price.toFixed(2)} €</span>` : ''}
-                       ${item.note ? `<span>•</span><span class="item-note">${this.escapeHTML(item.note)}</span>` : ''}
                    </div>
+                   ${item.allergen || (item.hasAllergens && item.hasAllergens) ? '<div class="allergen-warning">⚠️ CONTIENT DES ALLERGÈNES</div>' : ''}
+                   ${item.modifiers && item.modifiers.length > 0 ? `<div class="item-modifiers">${item.modifiers.map(m => `<span class="modifier-tag">${this.escapeHTML(m)}</span>`).join('')}</div>` : ''}
+                   ${item.note ? `<div class="item-note">📝 ${this.escapeHTML(item.note)}</div>` : ''}
                </div>
                <div class="item-qty">${item.qty}</div>
            </div>
@@ -1853,6 +2363,9 @@ class CuisyncApp {
       } else if (view === 'kitchen') {
            if (pad.status === 'sent') {
                actionsHTML = `
+                   <button class="btn btn-outline btn-sm" data-action="print-kitchen" data-pad-id="${pad.id}">
+                       🖨️ Imprimer
+                   </button>
                    <button class="btn btn-primary btn-sm" data-action="ready" data-pad-id="${pad.id}">
                        Marquer prêt
                    </button>
@@ -1995,6 +2508,196 @@ class CuisyncApp {
         }
         win.document.open();
         win.document.write(this.buildReceiptHTML(pad));
+        win.document.close();
+    }
+    
+    printKitchenTicket(padId) {
+        const pad = this.pads.find(p => p.id === padId);
+        if (!pad) return;
+        
+        const restaurantName = this.restaurantSettings.name || 'RESTAURANT';
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = now.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        
+        // Group items by course
+        const itemsByCourse = {};
+        pad.items.forEach(item => {
+            const course = item.course || 'plat';
+            if (!itemsByCourse[course]) {
+                itemsByCourse[course] = [];
+            }
+            itemsByCourse[course].push(item);
+        });
+        
+        let itemsHTML = '';
+        Object.keys(itemsByCourse).forEach(course => {
+            const courseLabel = course === 'entrée' ? 'ENTRÉE' : course === 'dessert' ? 'DESSERT' : course === 'boisson' ? 'BOISSON' : 'PLAT';
+            itemsHTML += `<div class="course-section"><div class="course-label">${courseLabel}</div>`;
+            itemsByCourse[course].forEach(item => {
+                const allergenBadge = item.allergen ? '<span class="allergen-badge">⚠️ ALLERGÈNE</span>' : '';
+                const modifierBadges = item.modifiers && item.modifiers.length > 0 
+                    ? item.modifiers.map(m => `<span class="modifier-badge">${m.toUpperCase()}</span>`).join('')
+                    : '';
+                const note = item.note ? `<div class="item-note">⚠️ ${this.escapeHTML(item.note)}</div>` : '';
+                itemsHTML += `
+                    <div class="kitchen-item">
+                        <div class="item-header">
+                            <span class="item-qty">${item.qty}x</span>
+                            <span class="item-name">${this.escapeHTML(item.dish)}</span>
+                        </div>
+                        ${allergenBadge}
+                        ${modifierBadges}
+                        ${note}
+                    </div>
+                `;
+            });
+            itemsHTML += '</div>';
+        });
+        
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Ticket Cuisine - Table ${pad.table}</title>
+                <style>
+                    @page { size: 80mm auto; margin: 0; }
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { 
+                        font-family: 'Courier New', monospace;
+                        font-size: 12px;
+                        padding: 8px;
+                        width: 72mm;
+                    }
+                    .header {
+                        text-align: center;
+                        border-bottom: 2px solid #000;
+                        padding-bottom: 8px;
+                        margin-bottom: 8px;
+                    }
+                    .restaurant-name {
+                        font-size: 16px;
+                        font-weight: bold;
+                        margin-bottom: 4px;
+                    }
+                    .ticket-info {
+                        font-size: 10px;
+                        margin-top: 4px;
+                    }
+                    .table-info {
+                        font-size: 14px;
+                        font-weight: bold;
+                        text-align: center;
+                        margin: 8px 0;
+                        padding: 4px;
+                        background: #f0f0f0;
+                    }
+                    .course-section {
+                        margin-bottom: 12px;
+                    }
+                    .course-label {
+                        font-weight: bold;
+                        font-size: 11px;
+                        text-transform: uppercase;
+                        border-bottom: 1px solid #000;
+                        margin-bottom: 4px;
+                        padding-bottom: 2px;
+                    }
+                    .kitchen-item {
+                        margin-bottom: 6px;
+                        padding: 4px 0;
+                    }
+                    .item-header {
+                        display: flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+                    .item-qty {
+                        font-weight: bold;
+                        font-size: 14px;
+                        min-width: 20px;
+                    }
+                    .item-name {
+                        font-weight: bold;
+                        flex: 1;
+                    }
+                    .allergen-badge {
+                        display: inline-block;
+                        background: #ff0000;
+                        color: #fff;
+                        font-weight: bold;
+                        font-size: 9px;
+                        padding: 2px 4px;
+                        margin-top: 2px;
+                    }
+                    .modifier-badge {
+                        display: inline-block;
+                        background: #ffa500;
+                        color: #000;
+                        font-weight: bold;
+                        font-size: 9px;
+                        padding: 2px 4px;
+                        margin: 2px 2px 0 0;
+                    }
+                    .item-note {
+                        font-size: 10px;
+                        font-style: italic;
+                        margin-top: 2px;
+                        padding-left: 24px;
+                        color: #d00;
+                    }
+                    .table-notes {
+                        margin-top: 8px;
+                        padding: 4px;
+                        background: #fff3cd;
+                        font-size: 10px;
+                        border: 1px dashed #000;
+                    }
+                    .footer {
+                        text-align: center;
+                        font-size: 9px;
+                        margin-top: 8px;
+                        padding-top: 8px;
+                        border-top: 1px solid #000;
+                    }
+                    @media print {
+                        body { margin: 0; padding: 8px; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="restaurant-name">${this.escapeHTML(restaurantName)}</div>
+                    <div class="ticket-info">CUISINE</div>
+                    <div class="ticket-info">${dateStr} ${timeStr}</div>
+                </div>
+                <div class="table-info">
+                    TABLE ${pad.table}${pad.covers ? ` - ${pad.covers} COUVERTS` : ''}
+                </div>
+                ${pad.clientName ? `<div style="text-align: center; font-size: 10px; margin-bottom: 8px;">Client: ${this.escapeHTML(pad.clientName)}</div>` : ''}
+                ${itemsHTML}
+                ${pad.tableNotes ? `<div class="table-notes"><strong>Notes table:</strong> ${this.escapeHTML(pad.tableNotes)}</div>` : ''}
+                <div class="footer">
+                    Ticket généré le ${dateStr} à ${timeStr}
+                </div>
+                <script>
+                    window.onload = function() {
+                        window.print();
+                        setTimeout(function() { window.close(); }, 500);
+                    };
+                </script>
+            </body>
+            </html>
+        `;
+        
+        const win = window.open('', 'KITCHEN_TICKET', 'height=600,width=300');
+        if (!win) {
+            this.showToast("Impossible d'ouvrir la fenêtre d'impression", 'error');
+            return;
+        }
+        win.document.open();
+        win.document.write(html);
         win.document.close();
     }
 
@@ -2393,13 +3096,21 @@ class CuisyncApp {
    }
    
    formatDate(dateString) {
-       return new Date(dateString).toLocaleString('fr-FR', {
-           day: '2-digit',
-           month: '2-digit',
-           year: 'numeric',
-           hour: '2-digit',
-           minute: '2-digit'
-       });
+       if (!dateString) return '—';
+       try {
+           const date = new Date(dateString);
+           if (isNaN(date.getTime())) return '—';
+           return date.toLocaleString('fr-FR', {
+               day: '2-digit',
+               month: '2-digit',
+               year: 'numeric',
+               hour: '2-digit',
+               minute: '2-digit'
+           });
+       } catch (error) {
+           console.error('Error formatting date:', error);
+           return '—';
+       }
    }
    
    // Tables Management
@@ -3165,6 +3876,10 @@ class CuisyncApp {
        if (clientsMgmt) clientsMgmt.classList.add('hidden');
        if (settingsMgmt) settingsMgmt.classList.add('hidden');
        if (this.dom.mapView) this.dom.mapView.classList.add('hidden');
+       if (this.dom.inventoryManagement) this.dom.inventoryManagement.classList.add('hidden');
+       if (this.dom.shiftsManagement) this.dom.shiftsManagement.classList.add('hidden');
+       if (this.dom.discountsManagement) this.dom.discountsManagement.classList.add('hidden');
+       if (this.dom.reportsManagement) this.dom.reportsManagement.classList.add('hidden');
        
        // Update tab states
        document.querySelectorAll('.host-main-tab').forEach(tab => {
@@ -3224,6 +3939,34 @@ class CuisyncApp {
                    this.renderMapView();
                }
                if (this.dom.mapViewBtn) this.dom.mapViewBtn.classList.add('active');
+               break;
+           case 'inventory':
+               if (this.dom.inventoryManagement) {
+                   this.dom.inventoryManagement.classList.remove('hidden');
+                   this.renderInventory();
+               }
+               if (this.dom.inventoryViewBtn) this.dom.inventoryViewBtn.classList.add('active');
+               break;
+           case 'shifts':
+               if (this.dom.shiftsManagement) {
+                   this.dom.shiftsManagement.classList.remove('hidden');
+                   this.renderShifts();
+               }
+               if (this.dom.shiftsViewBtn) this.dom.shiftsViewBtn.classList.add('active');
+               break;
+           case 'discounts':
+               if (this.dom.discountsManagement) {
+                   this.dom.discountsManagement.classList.remove('hidden');
+                   this.renderDiscounts();
+               }
+               if (this.dom.discountsViewBtn) this.dom.discountsViewBtn.classList.add('active');
+               break;
+           case 'reports':
+               if (this.dom.reportsManagement) {
+                   this.dom.reportsManagement.classList.remove('hidden');
+                   this.renderReports();
+               }
+               if (this.dom.reportsViewBtn) this.dom.reportsViewBtn.classList.add('active');
                break;
        }
    }
@@ -3733,6 +4476,640 @@ class CuisyncApp {
        // Switch to reservations view
        this.toggleHostView('reservations');
        this.showToast(`Informations de ${client.name} chargées`, 'success');
+   }
+   
+   // ========== INVENTORY MANAGEMENT ==========
+   initializeInventory() {
+       // Initialize inventory from menu items
+       if (!this.inventory || this.inventory.length === 0) {
+           this.inventory = [];
+           this.menu.categories.forEach(category => {
+               (category.dishes || []).forEach(dish => {
+                   const existing = this.inventory.find(inv => inv.dishId === dish.id);
+                   if (!existing) {
+                       this.inventory.push({
+                           id: this.generateId(),
+                           dishId: dish.id,
+                           dishName: dish.name,
+                           categoryId: category.id,
+                           stock: 100,
+                           minStock: 10,
+                           unit: 'portion',
+                           lastUpdated: new Date().toISOString()
+                       });
+                   }
+               });
+           });
+           this.saveToStorage();
+       }
+   }
+   
+   renderInventory() {
+       if (!this.dom.inventoryList) return;
+       this.initializeInventory();
+       
+       const searchTerm = document.getElementById('inventory-search-input')?.value.toLowerCase() || '';
+       const statusFilter = document.getElementById('inventory-status-filter')?.value || 'all';
+       
+       let filtered = this.inventory.filter(inv => {
+           const matchesSearch = !searchTerm || inv.dishName.toLowerCase().includes(searchTerm);
+           const matchesStatus = statusFilter === 'all' || 
+               (statusFilter === 'in-stock' && inv.stock > inv.minStock) ||
+               (statusFilter === 'low-stock' && inv.stock > 0 && inv.stock <= inv.minStock) ||
+               (statusFilter === 'out-of-stock' && inv.stock === 0);
+           return matchesSearch && matchesStatus;
+       });
+       
+       if (filtered.length === 0) {
+           this.dom.inventoryList.innerHTML = '<div class="empty-state"><p>Aucun article en stock</p></div>';
+           return;
+       }
+       
+       const html = filtered.map(inv => {
+           const statusClass = inv.stock === 0 ? 'out-of-stock' : inv.stock <= inv.minStock ? 'low-stock' : 'in-stock';
+           const statusText = inv.stock === 0 ? 'Rupture' : inv.stock <= inv.minStock ? 'Stock faible' : 'En stock';
+           
+           return `
+               <div class="inventory-item ${statusClass}">
+                   <div class="inventory-item-header">
+                       <h4>${this.escapeHTML(inv.dishName)}</h4>
+                       <span class="inventory-status-badge ${statusClass}">${statusText}</span>
+                   </div>
+                   <div class="inventory-item-details">
+                       <div class="inventory-stock-info">
+                           <label>Stock actuel:</label>
+                           <input type="number" min="0" value="${inv.stock}" 
+                                  data-inventory-id="${inv.id}" 
+                                  class="inventory-stock-input" 
+                                  data-action="update-stock">
+                           <span>${inv.unit}</span>
+                       </div>
+                       <div class="inventory-min-stock">
+                           <label>Seuil d'alerte:</label>
+                           <input type="number" min="0" value="${inv.minStock}" 
+                                  data-inventory-id="${inv.id}" 
+                                  class="inventory-min-input"
+                                  data-action="update-min-stock">
+                           <span>${inv.unit}</span>
+                       </div>
+                   </div>
+                   <div class="inventory-item-actions">
+                       <button class="btn btn-sm btn-secondary" data-action="adjust-inventory" data-inventory-id="${inv.id}" data-delta="1">+1</button>
+                       <button class="btn btn-sm btn-secondary" data-action="adjust-inventory" data-inventory-id="${inv.id}" data-delta="-1">-1</button>
+                       <button class="btn btn-sm btn-secondary" data-action="adjust-inventory" data-inventory-id="${inv.id}" data-delta="10">+10</button>
+                       <button class="btn btn-sm btn-secondary" data-action="adjust-inventory" data-inventory-id="${inv.id}" data-delta="-10">-10</button>
+                   </div>
+               </div>
+           `;
+       }).join('');
+       
+       this.dom.inventoryList.innerHTML = html;
+       
+       // Attach event listeners for inventory actions using event delegation
+       // Remove old listeners by cloning the node
+       const newInventoryList = this.dom.inventoryList.cloneNode(true);
+       this.dom.inventoryList.parentNode.replaceChild(newInventoryList, this.dom.inventoryList);
+       this.dom.inventoryList = newInventoryList;
+       
+       // Click events for buttons
+       this.dom.inventoryList.addEventListener('click', (e) => {
+           const btn = e.target.closest('[data-action]');
+           if (!btn || btn.tagName !== 'BUTTON') return;
+           
+           const action = btn.dataset.action;
+           const inventoryId = btn.dataset.inventoryId;
+           const delta = btn.dataset.delta;
+           
+           if (action === 'adjust-inventory' && inventoryId && delta) {
+               e.preventDefault();
+               e.stopPropagation();
+               this.adjustInventory(inventoryId, parseInt(delta));
+           }
+       });
+       
+       // Change events for inputs
+       this.dom.inventoryList.addEventListener('change', (e) => {
+           const input = e.target;
+           if (!input.classList.contains('inventory-stock-input') && !input.classList.contains('inventory-min-input')) return;
+           
+           const inventoryId = input.dataset.inventoryId;
+           if (!inventoryId) return;
+           
+           if (input.classList.contains('inventory-stock-input')) {
+               this.updateInventoryStock(inventoryId, input.value);
+           } else if (input.classList.contains('inventory-min-input')) {
+               this.updateInventoryMinStock(inventoryId, input.value);
+           }
+       });
+   }
+   
+   updateInventoryStock(inventoryId, newStock) {
+       const inv = this.inventory.find(i => i.id === inventoryId);
+       if (!inv) return;
+       
+       inv.stock = Math.max(0, parseInt(newStock) || 0);
+       inv.lastUpdated = new Date().toISOString();
+       this.updateDishAvailabilityFromInventory(inv);
+       this.saveToStorage();
+       this.renderInventory();
+       this.broadcastMessage('inventory-updated', inv);
+   }
+   
+   updateInventoryMinStock(inventoryId, newMinStock) {
+       const inv = this.inventory.find(i => i.id === inventoryId);
+       if (!inv) return;
+       
+       inv.minStock = Math.max(0, parseInt(newMinStock) || 0);
+       this.saveToStorage();
+       this.renderInventory();
+   }
+   
+   adjustInventory(inventoryId, delta) {
+       const inv = this.inventory.find(i => i.id === inventoryId);
+       if (!inv) return;
+       
+       inv.stock = Math.max(0, inv.stock + delta);
+       inv.lastUpdated = new Date().toISOString();
+       this.updateDishAvailabilityFromInventory(inv);
+       this.saveToStorage();
+       this.renderInventory();
+       this.broadcastMessage('inventory-updated', inv);
+   }
+   
+   updateDishAvailabilityFromInventory(inv) {
+       this.menu.categories.forEach(category => {
+           const dish = category.dishes?.find(d => d.id === inv.dishId);
+           if (dish) {
+               dish.availability = inv.stock > 0 ? 'available' : 'unavailable';
+           }
+       });
+       this.saveMenuToStorage();
+       this.refreshDishOptions(); // Update dish selects
+       this.renderMenuList(); // Update menu display
+       this.broadcastMessage('menu-updated', this.menu);
+   }
+   
+   // ========== SHIFTS MANAGEMENT ==========
+   renderShifts() {
+       if (!this.dom.shiftsList) return;
+       
+       const today = new Date();
+       const currentShift = this.shifts.find(s => {
+           const start = new Date(s.startTime);
+           const end = new Date(s.endTime);
+           return today >= start && today <= end;
+       });
+       
+       if (this.dom.currentShiftInfo) {
+           if (currentShift) {
+               const members = currentShift.members.map(m => m.name).join(', ') || 'Aucun';
+               this.dom.currentShiftInfo.innerHTML = `
+                   <div class="current-shift-card">
+                       <h3>Shift en cours</h3>
+                       <div class="shift-info">
+                           <div><strong>Début:</strong> ${this.formatDate(currentShift.startTime)}</div>
+                           <div><strong>Fin:</strong> ${this.formatDate(currentShift.endTime)}</div>
+                           <div><strong>Équipe:</strong> ${members}</div>
+                       </div>
+                   </div>
+               `;
+           } else {
+               this.dom.currentShiftInfo.innerHTML = '<div class="current-shift-card"><p>Aucun shift en cours</p></div>';
+           }
+       }
+       
+       const upcomingShifts = this.shifts
+           .filter(s => new Date(s.startTime) >= today)
+           .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+           .slice(0, 10);
+       
+       if (upcomingShifts.length === 0) {
+           this.dom.shiftsList.innerHTML = '<div class="empty-state"><p>Aucun shift programmé</p></div>';
+           return;
+       }
+       
+       const html = upcomingShifts.map(shift => `
+           <div class="shift-card">
+               <div class="shift-header">
+                   <h4>${this.formatDate(shift.startTime)}</h4>
+                   <span class="shift-time">${new Date(shift.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} - ${new Date(shift.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+               </div>
+               <div class="shift-members">
+                   ${shift.members.map(m => `<span class="shift-member">${this.escapeHTML(m.name)} (${m.role})</span>`).join('')}
+               </div>
+               <div class="shift-actions">
+                   <button class="btn btn-sm btn-danger" data-action="delete-shift" data-shift-id="${shift.id}">Supprimer</button>
+               </div>
+           </div>
+       `).join('');
+       
+       this.dom.shiftsList.innerHTML = html;
+       
+       // Attach event listeners for shift actions using event delegation
+       // Remove old listeners by cloning the node
+       if (this.dom.shiftsList && this.dom.shiftsList.parentNode) {
+           const newShiftsList = this.dom.shiftsList.cloneNode(true);
+           this.dom.shiftsList.parentNode.replaceChild(newShiftsList, this.dom.shiftsList);
+           this.dom.shiftsList = newShiftsList;
+           
+           this.dom.shiftsList.addEventListener('click', (e) => {
+               const btn = e.target.closest('[data-action]');
+               if (!btn || btn.tagName !== 'BUTTON') return;
+               
+               const action = btn.dataset.action;
+               const shiftId = btn.dataset.shiftId;
+               
+               if (action === 'delete-shift' && shiftId) {
+                   e.preventDefault();
+                   e.stopPropagation();
+                   this.deleteShift(shiftId);
+               }
+           });
+       }
+   }
+   
+   showAddShiftModal() {
+       const startTime = prompt('Heure de début (HH:MM):', '09:00');
+       const endTime = prompt('Heure de fin (HH:MM):', '17:00');
+       const date = prompt('Date (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
+       
+       if (!startTime || !endTime || !date) return;
+       
+       const startDateTime = new Date(`${date}T${startTime}`);
+       const endDateTime = new Date(`${date}T${endTime}`);
+       
+       if (isNaN(startDateTime.getTime()) || isNaN(endDateTime.getTime())) {
+           this.showToast('Format de date/heure invalide', 'error');
+           return;
+       }
+       
+       const shift = {
+           id: this.generateId(),
+           startTime: startDateTime.toISOString(),
+           endTime: endDateTime.toISOString(),
+           members: [],
+           createdAt: new Date().toISOString()
+       };
+       
+       this.shifts.push(shift);
+       this.saveToStorage();
+       this.renderShifts();
+       this.showToast('Shift ajouté', 'success');
+   }
+   
+   deleteShift(shiftId) {
+       if (!confirm('Supprimer ce shift ?')) return;
+       this.shifts = this.shifts.filter(s => s.id !== shiftId);
+       this.saveToStorage();
+       this.renderShifts();
+       this.showToast('Shift supprimé', 'success');
+   }
+   
+   // ========== DISCOUNTS MANAGEMENT ==========
+   renderDiscounts() {
+       if (!this.dom.discountsList) return;
+       
+       // Show all discounts, not just active ones
+       if (this.discounts.length === 0) {
+           this.dom.discountsList.innerHTML = '<div class="empty-state"><p>Aucune remise enregistrée</p></div>';
+           return;
+       }
+       
+       // Sort: active first, then by creation date
+       const sortedDiscounts = [...this.discounts].sort((a, b) => {
+           if (a.active !== b.active) return b.active ? 1 : -1;
+           return new Date(b.createdAt) - new Date(a.createdAt);
+       });
+       
+       const html = sortedDiscounts.map(discount => {
+           const now = new Date();
+           const start = discount.startDate ? new Date(discount.startDate) : null;
+           const end = discount.endDate ? new Date(discount.endDate) : null;
+           const isExpired = end && now > end;
+           const notStarted = start && now < start;
+           
+           return `
+           <div class="discount-card ${!discount.active ? 'discount-inactive' : ''} ${isExpired ? 'discount-expired' : ''}">
+               <div class="discount-header">
+                   <h4>${this.escapeHTML(discount.name)}</h4>
+                   <div style="display: flex; align-items: center; gap: 8px;">
+                       ${!discount.active ? '<span class="discount-status-badge inactive">Inactive</span>' : ''}
+                       ${isExpired ? '<span class="discount-status-badge expired">Expirée</span>' : ''}
+                       ${notStarted ? '<span class="discount-status-badge pending">À venir</span>' : ''}
+                       ${discount.active && !isExpired && !notStarted ? '<span class="discount-status-badge active">Active</span>' : ''}
+                       <span class="discount-value">${discount.type === 'percentage' ? discount.value + '%' : discount.value + ' €'}</span>
+                   </div>
+               </div>
+               <div class="discount-details">
+                   <div>Type: ${discount.type === 'percentage' ? 'Pourcentage' : 'Montant fixe'}</div>
+                   ${discount.startDate ? `<div>Début: ${this.formatDate(discount.startDate)}</div>` : '<div>Début: Immédiat</div>'}
+                   ${discount.endDate ? `<div>Fin: ${this.formatDate(discount.endDate)}</div>` : '<div>Fin: Aucune</div>'}
+                   ${discount.description ? `<div style="margin-top: 8px; font-style: italic;">${this.escapeHTML(discount.description)}</div>` : ''}
+               </div>
+               <div class="discount-actions">
+                   <button class="btn btn-sm btn-secondary" data-action="toggle-discount" data-discount-id="${discount.id}">
+                       ${discount.active ? 'Désactiver' : 'Activer'}
+                   </button>
+                   <button class="btn btn-sm btn-danger" data-action="delete-discount" data-discount-id="${discount.id}">Supprimer</button>
+               </div>
+           </div>
+       `;
+       }).join('');
+       
+       this.dom.discountsList.innerHTML = html;
+       
+       // Attach event listeners for discount actions using event delegation
+       // Remove old listeners by cloning the node
+       const newDiscountsList = this.dom.discountsList.cloneNode(true);
+       this.dom.discountsList.parentNode.replaceChild(newDiscountsList, this.dom.discountsList);
+       this.dom.discountsList = newDiscountsList;
+       
+       this.dom.discountsList.addEventListener('click', (e) => {
+           const btn = e.target.closest('[data-action]');
+           if (!btn || btn.tagName !== 'BUTTON') return;
+           
+           const action = btn.dataset.action;
+           const discountId = btn.dataset.discountId;
+           
+           if (!discountId) {
+               console.error('Discount ID missing', btn, btn.dataset);
+               return;
+           }
+           
+           e.preventDefault();
+           e.stopPropagation();
+           
+           if (action === 'toggle-discount') {
+               this.toggleDiscount(discountId);
+           } else if (action === 'delete-discount') {
+               this.deleteDiscount(discountId);
+           }
+       });
+   }
+   
+   showAddDiscountModal() {
+       const name = prompt('Nom de la remise:');
+       if (!name) return;
+       
+       const type = confirm('Remise en pourcentage ? (OK = %, Annuler = montant fixe)') ? 'percentage' : 'fixed';
+       const valueStr = prompt(type === 'percentage' ? 'Pourcentage (ex: 10):' : 'Montant (ex: 5):');
+       const value = parseFloat(valueStr);
+       
+       if (isNaN(value) || value <= 0) {
+           this.showToast('Valeur invalide', 'error');
+           return;
+       }
+       
+       const discount = {
+           id: this.generateId(),
+           name: name,
+           type: type,
+           value: value,
+           active: true,
+           description: '',
+           startDate: null,
+           endDate: null,
+           createdAt: new Date().toISOString()
+       };
+       
+       this.discounts.push(discount);
+       this.saveToStorage();
+       this.renderDiscounts();
+       this.showToast('Remise ajoutée', 'success');
+   }
+   
+   toggleDiscount(discountId) {
+       if (!discountId) {
+           console.error('toggleDiscount: discountId is missing');
+           return;
+       }
+       const discount = this.discounts.find(d => d.id === discountId);
+       if (!discount) {
+           console.error('toggleDiscount: discount not found', discountId, 'Available:', this.discounts.map(d => d.id));
+           this.showToast('Remise introuvable', 'error');
+           return;
+       }
+       discount.active = !discount.active;
+       this.saveToStorage();
+       this.renderDiscounts();
+       this.showToast(`Remise "${discount.name}" ${discount.active ? 'activée' : 'désactivée'}`, 'success');
+   }
+   
+   deleteDiscount(discountId) {
+       if (!discountId) {
+           console.error('deleteDiscount: discountId is missing');
+           return;
+       }
+       const discount = this.discounts.find(d => d.id === discountId);
+       if (!discount) {
+           console.error('deleteDiscount: discount not found', discountId, 'Available:', this.discounts.map(d => d.id));
+           this.showToast('Remise introuvable', 'error');
+           return;
+       }
+       if (!confirm(`Supprimer la remise "${discount.name}" ?`)) return;
+       this.discounts = this.discounts.filter(d => d.id !== discountId);
+       this.saveToStorage();
+       this.renderDiscounts();
+       this.showToast('Remise supprimée', 'success');
+   }
+   
+   // ========== REPORTS ==========
+   renderReports() {
+       if (!this.dom.reportsContent) return;
+       this.dom.reportsContent.innerHTML = `
+           <div class="reports-info">
+               <p>Sélectionnez un type de rapport et cliquez sur "Générer rapport" pour voir les analyses détaillées.</p>
+           </div>
+       `;
+   }
+   
+   generateReport() {
+       if (!this.dom.reportsContent) return;
+       const reportType = this.dom.reportTypeSelect?.value || 'sales';
+       let reportHTML = '';
+       
+       switch (reportType) {
+           case 'sales':
+               reportHTML = this.generateSalesReport();
+               break;
+           case 'dishes':
+               reportHTML = this.generateDishesReport();
+               break;
+           case 'tables':
+               reportHTML = this.generateTablesReport();
+               break;
+           case 'servers':
+               reportHTML = this.generateServersReport();
+               break;
+           case 'hours':
+               reportHTML = this.generateHoursReport();
+               break;
+       }
+       
+       this.dom.reportsContent.innerHTML = reportHTML;
+   }
+   
+   generateSalesReport() {
+       const today = new Date();
+       const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+       const todaySales = this.sales.filter(s => new Date(s.timestamp) >= startOfDay);
+       const totalRevenue = todaySales.reduce((sum, s) => sum + (s.total || 0), 0);
+       const totalOrders = todaySales.length;
+       const avgOrder = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+       
+       return `
+           <div class="report-section">
+               <h3>Rapport des ventes - ${new Date().toLocaleDateString('fr-FR')}</h3>
+               <div class="report-stats">
+                   <div class="report-stat-card">
+                       <h4>Chiffre d'affaires</h4>
+                       <div class="report-stat-value">${totalRevenue.toFixed(2)} €</div>
+                   </div>
+                   <div class="report-stat-card">
+                       <h4>Nombre de commandes</h4>
+                       <div class="report-stat-value">${totalOrders}</div>
+                   </div>
+                   <div class="report-stat-card">
+                       <h4>Panier moyen</h4>
+                       <div class="report-stat-value">${avgOrder.toFixed(2)} €</div>
+                   </div>
+               </div>
+           </div>
+       `;
+   }
+   
+   generateDishesReport() {
+       const dishStats = {};
+       this.history.forEach(order => {
+           order.items.forEach(item => {
+               if (!dishStats[item.dish]) {
+                   dishStats[item.dish] = { count: 0, revenue: 0 };
+               }
+               dishStats[item.dish].count += item.qty || 1;
+               dishStats[item.dish].revenue += (item.price || 0) * (item.qty || 1);
+           });
+       });
+       
+       const sorted = Object.entries(dishStats).sort((a, b) => b[1].count - a[1].count).slice(0, 10);
+       
+       return `
+           <div class="report-section">
+               <h3>Top 10 des plats les plus vendus</h3>
+               <table class="report-table">
+                   <thead><tr><th>Plat</th><th>Quantité</th><th>Revenus</th></tr></thead>
+                   <tbody>
+                       ${sorted.map(([dish, stats]) => `
+                           <tr>
+                               <td>${this.escapeHTML(dish)}</td>
+                               <td>${stats.count}</td>
+                               <td>${stats.revenue.toFixed(2)} €</td>
+                           </tr>
+                       `).join('')}
+                   </tbody>
+               </table>
+           </div>
+       `;
+   }
+   
+   generateTablesReport() {
+       const tableStats = {};
+       this.history.forEach(order => {
+           const table = order.table || 'N/A';
+           if (!tableStats[table]) {
+               tableStats[table] = { orders: 0, revenue: 0 };
+           }
+           tableStats[table].orders++;
+           tableStats[table].revenue += order.total || 0;
+       });
+       
+       return `
+           <div class="report-section">
+               <h3>Statistiques par table</h3>
+               <table class="report-table">
+                   <thead><tr><th>Table</th><th>Commandes</th><th>Revenus</th></tr></thead>
+                   <tbody>
+                       ${Object.entries(tableStats).map(([table, stats]) => `
+                           <tr>
+                               <td>${table}</td>
+                               <td>${stats.orders}</td>
+                               <td>${stats.revenue.toFixed(2)} €</td>
+                           </tr>
+                       `).join('')}
+                   </tbody>
+               </table>
+           </div>
+       `;
+   }
+   
+   generateServersReport() {
+       return '<div class="report-section"><h3>Rapport serveurs</h3><p>Fonctionnalité à venir</p></div>';
+   }
+   
+   generateHoursReport() {
+       const hourStats = {};
+       this.sales.forEach(sale => {
+           const hour = new Date(sale.timestamp).getHours();
+           if (!hourStats[hour]) {
+               hourStats[hour] = { orders: 0, revenue: 0 };
+           }
+           hourStats[hour].orders++;
+           hourStats[hour].revenue += sale.total || 0;
+       });
+       
+       const sortedHours = Object.entries(hourStats).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+       
+       return `
+           <div class="report-section">
+               <h3>Ventes par heure</h3>
+               <table class="report-table">
+                   <thead><tr><th>Heure</th><th>Commandes</th><th>Revenus</th></tr></thead>
+                   <tbody>
+                       ${sortedHours.map(([hour, stats]) => `
+                           <tr>
+                               <td>${hour}:00</td>
+                               <td>${stats.orders}</td>
+                               <td>${stats.revenue.toFixed(2)} €</td>
+                           </tr>
+                       `).join('')}
+                   </tbody>
+               </table>
+           </div>
+       `;
+   }
+   
+   exportReportToPDF() {
+       const reportContent = this.dom.reportsContent.innerHTML;
+       const printWindow = window.open('', '_blank');
+       printWindow.document.write(`
+           <html>
+           <head>
+               <title>Rapport Cuisync</title>
+               <style>
+                   body { font-family: Arial, sans-serif; padding: 20px; }
+                   table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                   th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                   th { background-color: #f2f2f2; }
+               </style>
+           </head>
+           <body>
+               <h1>Rapport Cuisync - ${new Date().toLocaleDateString('fr-FR')}</h1>
+               ${reportContent}
+           </body>
+           </html>
+       `);
+       printWindow.document.close();
+       printWindow.print();
+   }
+   
+   // ========== OFFLINE SYNC ==========
+   syncOfflineQueue() {
+       if (this.offlineQueue.length === 0) return;
+       this.offlineQueue.forEach(item => {
+           this.broadcastMessage(item.type, item.data);
+       });
+       this.offlineQueue = [];
+       this.saveToStorage();
+       this.showToast('Synchronisation terminée', 'success');
    }
 }
 

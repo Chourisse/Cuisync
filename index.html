@@ -8,12 +8,12 @@
     <meta property="og:title" content="Cuisync - Gestion de commandes">
     <meta property="og:description" content="Vue serveur, cuisine et hôte. Enregistrement local, export CSV, tickets d'impression.">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="branding/cuisync.png">
-    <link rel="apple-touch-icon" href="branding/cuisync.png">
+    <meta property="og:image" content="https://i.ibb.co/tpVctCfJ/cuisync.jpg">
+    <link rel="apple-touch-icon" href="https://i.ibb.co/tpVctCfJ/cuisync.jpg">
     <link rel="manifest" href="manifest.webmanifest">
     <title>Cuisync - Gestion de commandes</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="icon" href="branding/cuisync-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="https://i.ibb.co/tpVctCfJ/cuisync.jpg">
 </head>
 <body>
     <!-- Toast notifications -->
@@ -23,7 +23,7 @@
     <header class="header">
         <div class="header-content">
             <div class="logo">
-                <img src="branding/cuisync.png" alt="Cuisync" width="32" height="32">
+                <img src="https://i.ibb.co/tpVctCfJ/cuisync.jpg" alt="Cuisync" width="32" height="32">
                 <h1>Cuisync</h1>
             </div>
             <div class="view-toggle">
@@ -112,6 +112,12 @@
                             <textarea id="note-input" rows="2" placeholder="Instructions spéciales pour ce plat..."></textarea>
                         </div>
                         <div class="form-group">
+                            <label>Modificateurs</label>
+                            <div id="modifiers-container" class="modifiers-container">
+                                <!-- Modifiers will be rendered here -->
+                            </div>
+                        </div>
+                        <div class="form-group">
                             <label>
                                 <input type="checkbox" id="item-allergen-check"> Plat contient des allergènes
                             </label>
@@ -164,6 +170,12 @@
                     <div class="kitchen-controls">
                         <button id="sound-toggle-btn" class="btn btn-outline" aria-pressed="true">
                             🔊 Son activé
+                        </button>
+                        <button id="fullscreen-btn" class="btn btn-outline" title="Mode plein écran (F11)">
+                            ⛶ Plein écran
+                        </button>
+                        <button id="print-all-kitchen-btn" class="btn btn-secondary" title="Imprimer tous les tickets">
+                            🖨️ Imprimer
                         </button>
                         <select id="kitchen-filter-select" class="kitchen-filter">
                             <option value="all">Toutes les commandes</option>
@@ -256,6 +268,22 @@
                     <button id="map-view-btn" class="host-main-tab" data-view="map">
                         <span class="tab-icon">🗺️</span>
                         <span class="tab-label">Carte</span>
+                    </button>
+                    <button id="inventory-view-btn" class="host-main-tab" data-view="inventory">
+                        <span class="tab-icon">📦</span>
+                        <span class="tab-label">Stocks</span>
+                    </button>
+                    <button id="shifts-view-btn" class="host-main-tab" data-view="shifts">
+                        <span class="tab-icon">👥</span>
+                        <span class="tab-label">Équipes</span>
+                    </button>
+                    <button id="discounts-view-btn" class="host-main-tab" data-view="discounts">
+                        <span class="tab-icon">🎫</span>
+                        <span class="tab-label">Remises</span>
+                    </button>
+                    <button id="reports-view-btn" class="host-main-tab" data-view="reports">
+                        <span class="tab-icon">📊</span>
+                        <span class="tab-label">Rapports</span>
                     </button>
                 </div>
                 
@@ -686,6 +714,84 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Inventory Management -->
+                <div id="inventory-management" class="host-content-section hidden">
+                    <div class="host-section-header">
+                        <div>
+                            <h2>📦 Gestion des stocks</h2>
+                            <p class="section-subtitle">Suivre l'inventaire et la disponibilité des plats</p>
+                        </div>
+                        <button id="refresh-inventory-btn" class="btn btn-secondary">🔄 Actualiser</button>
+                    </div>
+                    <div class="inventory-filters">
+                        <input type="text" id="inventory-search-input" placeholder="🔍 Rechercher un plat..." class="search-input">
+                        <select id="inventory-status-filter" class="status-filter">
+                            <option value="all">Tous</option>
+                            <option value="in-stock">En stock</option>
+                            <option value="low-stock">Stock faible</option>
+                            <option value="out-of-stock">Rupture</option>
+                        </select>
+                    </div>
+                    <div id="inventory-list" class="inventory-list">
+                        <!-- Inventory items will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- Shifts Management -->
+                <div id="shifts-management" class="host-content-section hidden">
+                    <div class="host-section-header">
+                        <div>
+                            <h2>👥 Gestion des équipes</h2>
+                            <p class="section-subtitle">Gérer les shifts et les équipes de travail</p>
+                        </div>
+                        <button id="add-shift-btn" class="btn btn-primary">➕ Nouveau shift</button>
+                    </div>
+                    <div id="current-shift-info" class="current-shift-info">
+                        <!-- Current shift info will be rendered here -->
+                    </div>
+                    <div id="shifts-list" class="shifts-list">
+                        <!-- Shifts will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- Discounts Management -->
+                <div id="discounts-management" class="host-content-section hidden">
+                    <div class="host-section-header">
+                        <div>
+                            <h2>🎫 Gestion des remises</h2>
+                            <p class="section-subtitle">Créer et gérer les promotions et remises</p>
+                        </div>
+                        <button id="add-discount-btn" class="btn btn-primary">➕ Nouvelle remise</button>
+                    </div>
+                    <div id="discounts-list" class="discounts-list">
+                        <!-- Discounts will be rendered here -->
+                    </div>
+                </div>
+                
+                <!-- Reports View -->
+                <div id="reports-management" class="host-content-section hidden">
+                    <div class="host-section-header">
+                        <div>
+                            <h2>📊 Rapports détaillés</h2>
+                            <p class="section-subtitle">Analyses approfondies et exports</p>
+                        </div>
+                        <div class="reports-actions">
+                            <select id="report-type-select" class="report-type-select">
+                                <option value="sales">Ventes</option>
+                                <option value="dishes">Plats</option>
+                                <option value="tables">Tables</option>
+                                <option value="servers">Serveurs</option>
+                                <option value="hours">Par heure</option>
+                            </select>
+                            <button id="generate-report-btn" class="btn btn-primary">📄 Générer rapport</button>
+                            <button id="export-pdf-btn" class="btn btn-secondary">📥 Export PDF</button>
+                        </div>
+                    </div>
+                    <div id="reports-content" class="reports-content">
+                        <!-- Reports will be rendered here -->
                     </div>
                 </div>
             </div>
